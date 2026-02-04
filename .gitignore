@@ -1,0 +1,73 @@
+# Build directories
+build/
+bin/
+lib/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Compiled Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.a
+*.lib
+*.lai
+*.la
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Model files (too large for git)
+models/*.weights
+models/*.pb
+models/*.onnx
+models/*.caffemodel
+
+# Video files
+data/*.mp4
+data/*.avi
+data/*.mov
+data/*.mkv
+
+# Output videos
+output/*.mp4
+output/*.avi
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
