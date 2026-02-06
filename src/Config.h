@@ -1,8 +1,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "ObjectDetector.h"
+#include "PathPlanner.h"
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <vector>
+
 
 namespace FlightPath {
 
@@ -50,7 +54,7 @@ struct VisualConfig {
     bool showBoundingBoxes = true;
     bool showConfidence = true;
     bool showGrid = false;               // Debug: show planning grid
-    bool showFPS = true;
+    bool showFPS = false;
 };
 
 // Video Processing Configuration
@@ -82,6 +86,12 @@ struct AppConfig {
     // Runtime state
     bool isPaused = false;
     bool shouldExit = false;
+};
+
+struct FrameData {
+    cv::Mat frame;
+    std::vector<Detection> detections;
+    std::vector<Path> paths;
 };
 
 } // namespace FlightPath

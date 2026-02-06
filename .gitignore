@@ -71,3 +71,11 @@ output/*.avi
 # OS specific
 .DS_Store
 Thumbs.db
+
+
+*.log
+*.tlog
+*.idb
+*.pdb
+*.names
+*.cfg

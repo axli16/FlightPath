@@ -1,4 +1,5 @@
 #include <iostream>
+#include <thread>
 #include <string>
 #include <chrono>
 #include "VideoProcessor.h"
@@ -6,6 +7,7 @@
 #include "PathPlanner.h"
 #include "Visualizer.h"
 #include "Config.h"
+#include "utils/DroppingSafeQueue.h"
 
 using namespace FlightPath;
 
@@ -58,9 +60,20 @@ bool parseArguments(int argc, char* argv[], AppConfig& config) {
     return true;
 }
 
+void processFrame(const cv::Mat& frame, ObjectDetector& detector, PathPlanner& planner, Visualizer& visualizer, const AppConfig& config, DroppingSafeQueue<FrameData> postProcessQueue) {
+    // Detect objects
+    std::vector<Detection> detections = detector.detect(frame, config.detection);
+    
+    // Plan paths
+    std::vector<Path> paths = planner.findPaths(detections, frame.size(), config.path);
+
+    postProcessQueue.push(FrameData{frame, detections, paths}   );
+}
+
+
 int main(int argc, char* argv[]) {
     std::cout << "=== FlightPath - Computer Vision Path Detection ===" << std::endl;
-    std::cout << "Educational autonomous driving path visualization\n" << std::endl;
+    std::cout << "Illegal autonomous driving path visualization\n" << std::endl;
     
     // Parse command line arguments
     AppConfig config;
@@ -74,6 +87,10 @@ int main(int argc, char* argv[]) {
     ObjectDetector objectDetector;
     PathPlanner pathPlanner;
     Visualizer visualizer;
+
+    DroppingSafeQueue<cv::Mat> frameQueue;
+    DroppingSafeQueue<FrameData> postProcessQueue;
+
     
     // Load video
     std::cout << "\n[1/3] Loading video..." << std::endl;
@@ -107,74 +124,88 @@ int main(int argc, char* argv[]) {
     int savedFrameCount = 0;
     
     auto startTime = std::chrono::high_resolution_clock::now();
+
+    std::thread readerThread([&]() {
+        while (videoProcessor.readFrame(frame)) {
+            frameQueue.push(frame);
+        }
+    });
+
+    std::thread detectorThread([&]() {
+        while (frameQueue.pop(frame)) {
+            processFrame(frame, objectDetector, pathPlanner, visualizer, config, postProcessQueue);
+        }
+    });
+
     
-    while (videoProcessor.readFrame(frame)) {
-        if (config.shouldExit) {
-            break;
-        }
+    
+    // while (videoProcessor.readFrame(frame)) {
+    //     if (config.shouldExit) {
+    //         break;
+    //     }
         
-        frameCount++;
+    //     frameCount++;
         
-        // Calculate FPS
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = currentTime - startTime;
-        double fps = frameCount / elapsed.count();
+    //     // Calculate FPS
+    //     auto currentTime = std::chrono::high_resolution_clock::now();
+    //     std::chrono::duration<double> elapsed = currentTime - startTime;
+    //     double fps = frameCount / elapsed.count();
         
-        // Detect objects
-        std::vector<Detection> detections = objectDetector.detect(frame, config.detection);
+    //     // Detect objects
+    //     std::vector<Detection> detections = objectDetector.detect(frame, config.detection);
         
-        // Plan paths
-        std::vector<Path> paths = pathPlanner.findPaths(detections, frame.size(), config.path);
+    //     // Plan paths
+    //     std::vector<Path> paths = pathPlanner.findPaths(detections, frame.size(), config.path);
         
-        // Visualize results
-        visualizer.draw(frame, detections, paths, config.visual, fps);
+    //     // Visualize results
+    //     visualizer.draw(frame, detections, paths, config.visual, fps);
         
-        // Display frame
-        if (config.video.displayWindow) {
-            videoProcessor.displayFrame(frame, "FlightPath - Path Detection");
-        }
+    //     // Display frame
+    //     if (config.video.displayWindow) {
+    //         videoProcessor.displayFrame(frame, "FlightPath - Path Detection");
+    //     }
         
-        // Save to output video
-        if (config.video.saveOutput) {
-            videoProcessor.writeFrame(frame);
-        }
+    //     // Save to output video
+    //     if (config.video.saveOutput) {
+    //         videoProcessor.writeFrame(frame);
+    //     }
         
-        // Handle keyboard input
-        int key = cv::waitKey(1);
+    //     // Handle keyboard input
+    //     int key = cv::waitKey(1);
         
-        if (key == 27) { // ESC
-            std::cout << "\nExiting..." << std::endl;
-            break;
-        } else if (key == 32) { // SPACE
-            config.isPaused = !config.isPaused;
-            std::cout << (config.isPaused ? "Paused" : "Resumed") << std::endl;
+    //     if (key == 27) { // ESC
+    //         std::cout << "\nExiting..." << std::endl;
+    //         break;
+    //     } else if (key == 32) { // SPACE
+    //         config.isPaused = !config.isPaused;
+    //         std::cout << (config.isPaused ? "Paused" : "Resumed") << std::endl;
             
-            while (config.isPaused) {
-                key = cv::waitKey(100);
-                if (key == 32) {
-                    config.isPaused = false;
-                    std::cout << "Resumed" << std::endl;
-                } else if (key == 27) {
-                    config.shouldExit = true;
-                    break;
-                }
-            }
-        } else if (key == 's' || key == 'S') { // Save frame
-            std::string filename = "frame_" + std::to_string(frameCount) + ".jpg";
-            cv::imwrite(filename, frame);
-            savedFrameCount++;
-            std::cout << "Saved frame: " << filename << std::endl;
-        }
+    //         while (config.isPaused) {
+    //             key = cv::waitKey(100);
+    //             if (key == 32) {
+    //                 config.isPaused = false;
+    //                 std::cout << "Resumed" << std::endl;
+    //             } else if (key == 27) {
+    //                 config.shouldExit = true;
+    //                 break;
+    //             }
+    //         }
+    //     } else if (key == 's' || key == 'S') { // Save frame
+    //         std::string filename = "frame_" + std::to_string(frameCount) + ".jpg";
+    //         cv::imwrite(filename, frame);
+    //         savedFrameCount++;
+    //         std::cout << "Saved frame: " << filename << std::endl;
+    //     }
         
-        // Progress indicator
-        if (frameCount % 30 == 0) {
-            int totalFrames = videoProcessor.getTotalFrames();
-            float progress = (totalFrames > 0) ? (frameCount * 100.0f / totalFrames) : 0;
-            std::cout << "\rProcessed: " << frameCount << " frames | "
-                     << "FPS: " << std::fixed << std::setprecision(1) << fps << " | "
-                     << "Progress: " << std::setprecision(1) << progress << "%    " << std::flush;
-        }
-    }
+    //     // Progress indicator
+    //     if (frameCount % 30 == 0) {
+    //         int totalFrames = videoProcessor.getTotalFrames();
+    //         float progress = (totalFrames > 0) ? (frameCount * 100.0f / totalFrames) : 0;
+    //         std::cout << "\rProcessed: " << frameCount << " frames | "
+    //                  << "FPS: " << std::fixed << std::setprecision(1) << fps << " | "
+    //                  << "Progress: " << std::setprecision(1) << progress << "%    " << std::flush;
+    //     }
+    // }
     
     // Cleanup
     std::cout << "\n\nProcessing complete!" << std::endl;
