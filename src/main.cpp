@@ -87,53 +87,49 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
   return true;
 }
 
-void processFrame(AppConfig &config, DroppingSafeQueue<cv::Mat> &frameQueue, 
-                    DroppingSafeQueue<FrameData> &postProcessQueue, 
-                    ObjectDetector &objectDetector, PathPlanner &pathPlanner){
-    int count = 0;
-    cv::Mat localFrame; // Use a local frame variable for this thread
+void processFrame(AppConfig &config,
+                  DroppingSafeQueue<preProcessFrameData> &frameQueue,
+                  DroppingSafeQueue<FrameData> &postProcessQueue,
+                  ObjectDetector &objectDetector, PathPlanner &pathPlanner) {
 
-    // Cache for frame skipping optimization
-    std::vector<Detection> cachedDetections;
-    std::vector<Path> cachedPaths;
+  preProcessFrameData localFrame; // Use a local frame variable for this thread
 
-    while (true) {
-        frameQueue.pop(localFrame);
+  // Cache for frame skipping optimization
+  std::vector<Detection> cachedDetections;
+  std::vector<Path> cachedPaths;
 
-        std::cout << "Processing frame " << count << " (DETECTING)"
-                  << std::endl;
+  while (true) {
+    frameQueue.pop(localFrame);
 
-        auto start = std::chrono::high_resolution_clock::now();
+    std::cout << "Processing frame " << localFrame.frameNumber << " (DETECTING)"
+              << std::endl;
 
-        // Detect objects
-        cachedDetections = objectDetector.detect(localFrame, config.detection);
+    if (localFrame.frameNumber % config.detection.frameSkip == 0) {
+      auto start = std::chrono::high_resolution_clock::now();
 
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> elapsed = end - start;
-        std::cout << "  Detection took: " << elapsed.count() << " ms"
-                  << std::endl;
+      // Detect objects
+      cachedDetections =
+          objectDetector.detect(localFrame.frame, config.detection);
 
-        // Plan paths
-        start = std::chrono::high_resolution_clock::now();
-        cachedPaths = pathPlanner.findPaths(cachedDetections, localFrame.size(),
-                                            config.path);
-        end = std::chrono::high_resolution_clock::now();
-        elapsed = end - start;
-        std::cout << "  Path planning took: " << elapsed.count() << " ms"
-            << std::endl;
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> elapsed = end - start;
+      std::cout << "  Detection took: " << elapsed.count() << " ms"
+                << std::endl;
 
-      // Push frame with detections (either fresh or cached)
-      postProcessQueue.push(
-          FrameData{localFrame.clone(), cachedDetections, cachedPaths});
-
-      for (int i = 0; i < config.detection.frameSkip - 1; i++) {
-          frameQueue.pop(localFrame);
-          postProcessQueue.push(FrameData{ localFrame.clone(), cachedDetections, cachedPaths });
-          std::cout << "Processing frame " << count << " (CACHED)" << std::endl;
-          
-      }
-      count+= config.detection.frameSkip;
+      // Plan paths
+      start = std::chrono::high_resolution_clock::now();
+      cachedPaths = pathPlanner.findPaths(cachedDetections,
+                                          localFrame.frame.size(), config.path);
+      end = std::chrono::high_resolution_clock::now();
+      elapsed = end - start;
+      std::cout << "  Path planning took: " << elapsed.count() << " ms"
+                << std::endl;
     }
+
+    // Push frame with detections (either fresh or cached)
+    postProcessQueue.push(FrameData{localFrame.frame.clone(), cachedDetections,
+                                    cachedPaths, localFrame.frameNumber});
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -152,11 +148,13 @@ int main(int argc, char *argv[]) {
   VideoProcessor videoProcessor;
   ObjectDetector objectDetector1;
   ObjectDetector objectDetector2;
+  ObjectDetector objectDetector3;
   PathPlanner pathPlanner1;
   PathPlanner pathPlanner2;
+  PathPlanner pathPlanner3;
   Visualizer visualizer;
 
-  DroppingSafeQueue<cv::Mat> frameQueue;
+  DroppingSafeQueue<preProcessFrameData> frameQueue;
   DroppingSafeQueue<FrameData> postProcessQueue;
 
   // Load video
@@ -175,8 +173,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (!objectDetector2.loadModel(config.model)) {
-      std::cerr << "Failed to load YOLO model" << std::endl;
-      return 1;
+    std::cerr << "Failed to load YOLO model" << std::endl;
+    return 1;
   }
 
   // Initialize output writer if requested
@@ -213,12 +211,15 @@ int main(int argc, char *argv[]) {
         cropMessageShown = true;
       }
 
-      frameQueue.push(croppedFrame.clone());
+      frameQueue.push(preProcessFrameData{croppedFrame.clone(), numFrames});
     } else if (config.video.autoScale) {
-      cv::resize(frame, frame, cv::Size(config.video.targetWidth, config.video.targetHeight));
-      frameQueue.push(frame.clone());
+      cv::resize(frame, frame,
+                 cv::Size(config.video.targetWidth, config.video.targetHeight));
+      frameQueue.push(preProcessFrameData{frame.clone(), numFrames});
     } else {
-      frameQueue.push(frame.clone()); // Clone to ensure each frame is independent
+      frameQueue.push(preProcessFrameData{
+          frame.clone(),
+          numFrames}); // Clone to ensure each frame is independent
     }
     numFrames++;
   }
@@ -226,123 +227,83 @@ int main(int argc, char *argv[]) {
 
   std::thread detectorThread1([&]() {
     SetCurrentThreadName(L"ProcessFrame_Thread1");
-    processFrame(config, frameQueue, postProcessQueue, objectDetector1, pathPlanner1);
-   
+    processFrame(config, frameQueue, postProcessQueue, objectDetector1,
+                 pathPlanner1);
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
   std::thread detectorThread2([&]() {
-      SetCurrentThreadName(L"ProcessFrame_Thread2");
-      processFrame(config, frameQueue, postProcessQueue, objectDetector2, pathPlanner2);
+    SetCurrentThreadName(L"ProcessFrame_Thread2");
+    processFrame(config, frameQueue, postProcessQueue, objectDetector2,
+                 pathPlanner2);
+  });
 
-      });
-  // Wait for the processing frames can get a headstart 
+  //std::this_thread::sleep_for(std::chrono::milliseconds(15));
+
+  //std::thread detectorThread3([&]() {
+  //  SetCurrentThreadName(L"ProcessFrame_Thread3");
+  //  processFrame(config, frameQueue, postProcessQueue, objectDetector3,
+  //               pathPlanner3);
+  //});
+  // Wait for the processing frames can get a headstart
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   std::thread drawThread([&]() {
     SetCurrentThreadName(L"DrawFrame_Thread");
 
     FrameData frameData;
-    std::chrono::duration<double, std::milli> frame_duration(1000.0 / target_fps);
-    
+    int nextExpectedFrameNumber = 0;
+    std::unordered_map<int, FrameData> buffer;
+    std::chrono::duration<double, std::milli> frame_duration(1000.0 /
+                                                             target_fps);
+
+    std::vector<Detection> cachedDetections;
+    std::vector<Path> cachedPaths;
+
     while (true) {
-      auto frame_start = std::chrono::high_resolution_clock::now();
-      postProcessQueue.pop(frameData);
-      
-      visualizer.draw(frameData.frame, frameData.detections, frameData.paths,
-                      config.visual);
 
-      if (config.video.displayWindow) {
-        videoProcessor.displayFrame(frameData.frame,
-                                    "FlightPath - Path Detection");
+      postProcessQueue.try_pop(frameData);
 
-        // CRITICAL: waitKey is needed for the window to update!
-        int key = cv::waitKey(1);
-        if (key == 27)
-          config.shouldExit = true;
+      buffer[frameData.frameNumber] = frameData;
+
+      if (buffer.count(nextExpectedFrameNumber)) {
+        auto frame_start = std::chrono::high_resolution_clock::now();
+        FrameData frameToDisplay = buffer[nextExpectedFrameNumber];
+
+        if (frameToDisplay.frameNumber % config.detection.frameSkip == 0) {
+          cachedDetections = frameToDisplay.detections;
+          cachedPaths = frameToDisplay.paths;
+        }
+
+        buffer.erase(nextExpectedFrameNumber);
+        nextExpectedFrameNumber++;
+        visualizer.draw(frameToDisplay.frame, cachedDetections, cachedPaths,
+                        config.visual);
+
+        if (config.video.displayWindow) {
+          videoProcessor.displayFrame(frameToDisplay.frame,
+                                      "FlightPath - Path Detection");
+
+          // CRITICAL: waitKey is needed for the window to update!
+          int key = cv::waitKey(1);
+          if (key == 27)
+            config.shouldExit = true;
+        }
+
+        if (config.video.saveOutput) {
+          videoProcessor.writeFrame(frameToDisplay.frame);
+        }
+
+        std::this_thread::sleep_until(frame_start + frame_duration);
       }
-
-      if (config.video.saveOutput) {
-        videoProcessor.writeFrame(frameData.frame);
-      }
-      std::this_thread::sleep_until(frame_start + frame_duration);
     }
   });
 
-  // while (videoProcessor.readFrame(frame)) {
-  //     if (config.shouldExit) {
-  //         break;
-  //     }
-
-  //     frameCount++;
-
-  //     // Calculate FPS
-  //     auto currentTime = std::chrono::high_resolution_clock::now();
-  //     std::chrono::duration<double> elapsed = currentTime - startTime;
-  //     double fps = frameCount / elapsed.count();
-
-  //     // Detect objects
-  //     std::vector<Detection> detections = objectDetector.detect(frame,
-  //     config.detection);
-
-  //     // Plan paths
-  //     std::vector<Path> paths = pathPlanner.findPaths(detections,
-  //     frame.size(), config.path);
-
-  //     // Visualize results
-  //     visualizer.draw(frame, detections, paths, config.visual, fps);
-
-  //     // Display frame
-  //     if (config.video.displayWindow) {
-  //         videoProcessor.displayFrame(frame, "FlightPath - Path Detection");
-  //     }
-
-  //     // Save to output video
-  //     if (config.video.saveOutput) {
-  //         videoProcessor.writeFrame(frame);
-  //     }
-
-  //     // Handle keyboard input
-  //     int key = cv::waitKey(1);
-
-  //     if (key == 27) { // ESC
-  //         std::cout << "\nExiting..." << std::endl;
-  //         break;
-  //     } else if (key == 32) { // SPACE
-  //         config.isPaused = !config.isPaused;
-  //         std::cout << (config.isPaused ? "Paused" : "Resumed") << std::endl;
-
-  //         while (config.isPaused) {
-  //             key = cv::waitKey(100);
-  //             if (key == 32) {
-  //                 config.isPaused = false;
-  //                 std::cout << "Resumed" << std::endl;
-  //             } else if (key == 27) {
-  //                 config.shouldExit = true;
-  //                 break;
-  //             }
-  //         }
-  //     } else if (key == 's' || key == 'S') { // Save frame
-  //         std::string filename = "frame_" + std::to_string(frameCount) +
-  //         ".jpg"; cv::imwrite(filename, frame); savedFrameCount++; std::cout
-  //         << "Saved frame: " << filename << std::endl;
-  //     }
-
-  //     // Progress indicator
-  //     if (frameCount % 30 == 0) {
-  //         int totalFrames = videoProcessor.getTotalFrames();
-  //         float progress = (totalFrames > 0) ? (frameCount * 100.0f /
-  //         totalFrames) : 0; std::cout << "\rProcessed: " << frameCount << "
-  //         frames | "
-  //                  << "FPS: " << std::fixed << std::setprecision(1) << fps <<
-  //                  " | "
-  //                  << "Progress: " << std::setprecision(1) << progress << "%
-  //                  " << std::flush;
-  //     }
-  // }
 
   detectorThread1.join();
   detectorThread2.join();
+  //detectorThread3.join();
+  drawThread.join();
   while (true) {
     auto currentTime = std::chrono::high_resolution_clock::now();
   }

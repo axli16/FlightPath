@@ -127,10 +127,15 @@ struct AppConfig {
   bool shouldExit = false;
 };
 
+struct preProcessFrameData {
+    cv::Mat frame;
+    int frameNumber;
+};
 struct FrameData {
   cv::Mat frame;
   std::vector<Detection> detections;
   std::vector<Path> paths;
+  int frameNumber;
 };
 
 } // namespace FlightPath
