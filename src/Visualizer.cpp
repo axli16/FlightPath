@@ -163,8 +163,8 @@ void Visualizer::draw(cv::Mat &frame, const std::vector<Detection> &detections,
 
   // Draw in order: detections, paths, info panel
   drawDetections(frame, detections, config);
-  drawPaths(frame, paths, config);
-  drawInfoPanel(frame, detections, paths, config);
+  //drawPaths(frame, paths, config);
+  //drawInfoPanel(frame, detections, paths, config);
 }
 
 } // namespace FlightPath
