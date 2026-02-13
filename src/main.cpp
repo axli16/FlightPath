@@ -159,7 +159,8 @@ int main(int argc, char *argv[]) {
 
   // Load video
   std::cout << "\n[1/3] Loading video..." << std::endl;
-  if (!videoProcessor.open(config.video.inputPath)) {
+  int totalFrames = 0;
+  if (!videoProcessor.open(config.video.inputPath, totalFrames)) {
     std::cerr << "Failed to open video file: " << config.video.inputPath
               << std::endl;
     return 1;
@@ -194,36 +195,48 @@ int main(int argc, char *argv[]) {
   cv::Mat frame;
   int frameCount = 0;
   int savedFrameCount = 0;
-  int target_fps = 30;
+  int target_fps = 24;
 
-  auto startTime = std::chrono::high_resolution_clock::now();
-  int numFrames = 0;
-  bool cropMessageShown = false; // Only show crop message once
+  // Read frames in a separate thread to decouple reading from processing
+  std::thread readFrameThread([&]() {
+    auto startTime = std::chrono::high_resolution_clock::now();
+    int numFrames = 0;
+    bool cropMessageShown = false; // Only show crop message once
 
-  while (videoProcessor.readFrame(frame)) {
-    // Auto-crop if enabled and frame is too large
-    if (config.video.autoCrop) {
-      cv::Mat croppedFrame = VideoProcessor::cropToCenter(
-          frame, config.video.maxCropWidth, config.video.maxCropHeight);
+    while (numFrames < totalFrames) {
+      // Auto-crop if enabled and frame is too large
 
-      // Only show message on first crop
-      if (!cropMessageShown && croppedFrame.data != frame.data) {
-        cropMessageShown = true;
+      while (frameQueue.size() > 1000) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
+      if (videoProcessor.readFrame(frame)) {
+        if (config.video.autoCrop) {
+          cv::Mat croppedFrame = VideoProcessor::cropToCenter(
+              frame, config.video.maxCropWidth, config.video.maxCropHeight);
 
-      frameQueue.push(preProcessFrameData{croppedFrame.clone(), numFrames});
-    } else if (config.video.autoScale) {
-      cv::resize(frame, frame,
-                 cv::Size(config.video.targetWidth, config.video.targetHeight));
-      frameQueue.push(preProcessFrameData{frame.clone(), numFrames});
-    } else {
-      frameQueue.push(preProcessFrameData{
-          frame.clone(),
-          numFrames}); // Clone to ensure each frame is independent
+          // Only show message on first crop
+          if (!cropMessageShown && croppedFrame.data != frame.data) {
+            cropMessageShown = true;
+          }
+
+          frameQueue.push(preProcessFrameData{croppedFrame.clone(), numFrames});
+        } else if (config.video.autoScale) {
+          cv::resize(
+              frame, frame,
+              cv::Size(config.video.targetWidth, config.video.targetHeight));
+          frameQueue.push(preProcessFrameData{frame.clone(), numFrames});
+        } else {
+          frameQueue.push(preProcessFrameData{
+              frame.clone(),
+              numFrames}); // Clone to ensure each frame is independent
+        }
+      }
+      numFrames++;
     }
-    numFrames++;
-  }
-  std::cout << "Finished reading all frames: " << numFrames << std::endl;
+    std::cout << "Finished reading all frames: " << numFrames << std::endl;
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
   std::thread detectorThread1([&]() {
     SetCurrentThreadName(L"ProcessFrame_Thread1");
@@ -238,14 +251,14 @@ int main(int argc, char *argv[]) {
                  pathPlanner2);
   });
 
-  //std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  // std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
-  //std::thread detectorThread3([&]() {
-  //  SetCurrentThreadName(L"ProcessFrame_Thread3");
-  //  processFrame(config, frameQueue, postProcessQueue, objectDetector3,
-  //               pathPlanner3);
-  //});
-  // Wait for the processing frames can get a headstart
+  // std::thread detectorThread3([&]() {
+  //   SetCurrentThreadName(L"ProcessFrame_Thread3");
+  //   processFrame(config, frameQueue, postProcessQueue, objectDetector3,
+  //                pathPlanner3);
+  // });
+  //  Wait for the processing frames can get a headstart
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   std::thread drawThread([&]() {
@@ -262,7 +275,9 @@ int main(int argc, char *argv[]) {
 
     while (true) {
 
-      postProcessQueue.try_pop(frameData);
+      if (!postProcessQueue.try_pop(frameData)){
+          continue;
+      }
 
       buffer[frameData.frameNumber] = frameData;
 
@@ -298,11 +313,10 @@ int main(int argc, char *argv[]) {
       }
     }
   });
-
-
+  readFrameThread.join();
   detectorThread1.join();
   detectorThread2.join();
-  //detectorThread3.join();
+  // detectorThread3.join();
   drawThread.join();
   while (true) {
     auto currentTime = std::chrono::high_resolution_clock::now();

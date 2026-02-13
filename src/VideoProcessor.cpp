@@ -9,7 +9,7 @@ VideoProcessor::VideoProcessor()
 
 VideoProcessor::~VideoProcessor() { release(); }
 
-bool VideoProcessor::open(const std::string &videoPath) {
+bool VideoProcessor::open(const std::string &videoPath, int &totalFrames) {
   capture_.open(videoPath, cv::CAP_FFMPEG);
 
   if (!capture_.isOpened()) {
@@ -30,6 +30,7 @@ bool VideoProcessor::open(const std::string &videoPath) {
   std::cout << "  FPS: " << fps_ << std::endl;
   std::cout << "  Total frames: " << totalFrames_ << std::endl;
 
+  totalFrames = totalFrames_;
   return true;
 }
 

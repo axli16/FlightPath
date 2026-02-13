@@ -5,7 +5,6 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 
-
 namespace FlightPath {
 
 /**
@@ -24,7 +23,7 @@ public:
    * @param videoPath Path to the video file
    * @return true if successful, false otherwise
    */
-  bool open(const std::string &videoPath);
+  bool open(const std::string &videoPath, int &totalFrames);
 
   /**
    * @brief Read the next frame from the video
