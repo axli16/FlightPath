@@ -2,7 +2,6 @@
 #include <iomanip>
 #include <sstream>
 
-
 namespace FlightPath {
 
 Visualizer::Visualizer() {}
@@ -112,13 +111,14 @@ void Visualizer::drawInfoPanel(cv::Mat &frame,
   int lineSpacing = 25;
 
   // FPS
-//   if (config.showFPS) {
-//     std::stringstream fpsText;
-//     fpsText << "FPS: " << std::fixed << std::setprecision(1) << fps;
-//     cv::putText(panel, fpsText.str(), cv::Point(10, y),
-//                 cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2);
-//     y += lineSpacing;
-//   }
+  //   if (config.showFPS) {
+  //     std::stringstream fpsText;
+  //     fpsText << "FPS: " << std::fixed << std::setprecision(1) << fps;
+  //     cv::putText(panel, fpsText.str(), cv::Point(10, y),
+  //                 cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255),
+  //                 2);
+  //     y += lineSpacing;
+  //   }
 
   // Detection count
   std::stringstream detText;
@@ -154,17 +154,46 @@ void Visualizer::drawInfoPanel(cv::Mat &frame,
   cv::addWeighted(roi, 0.3, panel, 0.7, 0, roi);
 }
 
+void Visualizer::drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
+                         const VisualConfig &visualConfig) {
+  if (!visualConfig.showROI || !detectionConfig.useROI) {
+    return;
+  }
+
+  // Calculate ROI rectangle in pixel coordinates
+  int roiX = static_cast<int>(detectionConfig.roiX * frame.cols);
+  int roiY = static_cast<int>(detectionConfig.roiY * frame.rows);
+  int roiWidth = static_cast<int>(detectionConfig.roiWidth * frame.cols);
+  int roiHeight = static_cast<int>(detectionConfig.roiHeight * frame.rows);
+
+  cv::Rect roi(roiX, roiY, roiWidth, roiHeight);
+  // Ensure ROI is within frame bounds
+  roi &= cv::Rect(0, 0, frame.cols, frame.rows);
+
+  // Draw ROI rectangle (simplified for performance)
+  cv::Scalar roiColor(0, 255, 0);         // Green
+  cv::rectangle(frame, roi, roiColor, 2); // No anti-aliasing for speed
+
+  // Add simple label without background
+  std::string label = "ROI";
+  cv::Point labelPos(roi.x + 5, roi.y + 20);
+  cv::putText(frame, label, labelPos, cv::FONT_HERSHEY_SIMPLEX, 0.6, roiColor,
+              2);
+}
+
 void Visualizer::draw(cv::Mat &frame, const std::vector<Detection> &detections,
                       const std::vector<Path> &paths,
-                      const VisualConfig &config) {
+                      const VisualConfig &visualConfig,
+                      const DetectionConfig &detectionConfig) {
   if (frame.empty()) {
     return;
   }
 
-  // Draw in order: detections, paths, info panel
-  drawDetections(frame, detections, config);
-  //drawPaths(frame, paths, config);
-  //drawInfoPanel(frame, detections, paths, config);
+  // Draw in order: ROI, detections, paths, info panel
+  drawROI(frame, detectionConfig, visualConfig);
+  drawDetections(frame, detections, visualConfig);
+  // drawPaths(frame, paths, visualConfig);
+  // drawInfoPanel(frame, detections, paths, visualConfig);
 }
 
 } // namespace FlightPath

@@ -7,7 +7,6 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-
 namespace FlightPath {
 
 /**
@@ -26,10 +25,12 @@ public:
    * @param frame Frame to draw on (modified in place)
    * @param detections Detected objects
    * @param paths Planned paths
-   * @param config Visualization configuration
+   * @param visualConfig Visualization configuration
+   * @param detectionConfig Detection configuration (for ROI)
    */
   void draw(cv::Mat &frame, const std::vector<Detection> &detections,
-            const std::vector<Path> &paths, const VisualConfig &config);
+            const std::vector<Path> &paths, const VisualConfig &visualConfig,
+            const DetectionConfig &detectionConfig);
 
 private:
   /**
@@ -55,6 +56,12 @@ private:
    * @brief Get color for path based on type
    */
   cv::Scalar getPathColor(const Path &path, const VisualConfig &config);
+
+  /**
+   * @brief Draw ROI rectangle
+   */
+  void drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
+               const VisualConfig &visualConfig);
 };
 
 } // namespace FlightPath

@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-
 namespace FlightPath {
 
 /**
@@ -38,6 +37,16 @@ public:
                                 const DetectionConfig &detectionConfig);
 
   /**
+   * @brief Detect objects in multiple frames (batch processing for CUDA)
+   * @param frames Input frames
+   * @param detectionConfig Detection parameters
+   * @return Vector of detection results (one per frame)
+   */
+  std::vector<std::vector<Detection>>
+  detectBatch(const std::vector<cv::Mat> &frames,
+              const DetectionConfig &detectionConfig);
+
+  /**
    * @brief Check if model is loaded
    */
   bool isLoaded() const { return modelLoaded_; }
@@ -61,11 +70,14 @@ private:
    * @param outputs Network outputs
    * @param frame Original frame (for dimensions)
    * @param config Detection configuration
+   * @param roi Region of Interest used for detection (for coordinate
+   * adjustment)
    * @return Vector of detections
    */
   std::vector<Detection> postProcess(const std::vector<cv::Mat> &outputs,
                                      const cv::Mat &frame,
-                                     const DetectionConfig &config);
+                                     const DetectionConfig &config,
+                                     const cv::Rect &roi);
 
   cv::dnn::Net network_;
   std::vector<std::string> classNames_;

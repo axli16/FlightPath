@@ -71,6 +71,11 @@ public:
   bool isOpened() const { return capture_.isOpened(); }
 
   /**
+   * @brief Get direct access to VideoCapture for advanced operations
+   */
+  cv::VideoCapture &getCapture() { return capture_; }
+
+  /**
    * @brief Release resources
    */
   void release();

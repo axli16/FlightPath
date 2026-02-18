@@ -39,9 +39,10 @@ void printUsage(const char *programName) {
   std::cout << "  SPACE  - Pause/Resume\n";
   std::cout << "  ESC    - Exit\n";
   std::cout << "  S      - Save current frame\n";
-  std::cout << "\nExample:\n";
+  std::cout << "\nExamples:\n";
+  std::cout << "  " << programName << " data/dashcam.mp4 --cuda\n";
   std::cout << "  " << programName
-            << " data/dashcam.mp4 --output output/result.mp4\n";
+            << " data/dashcam.mp4 --cuda --frameskip 3 --input-size 224\n";
 }
 
 bool parseArguments(int argc, char *argv[], AppConfig &config) {
@@ -65,8 +66,9 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
       config.video.saveOutput = true;
     } else if (arg == "--confidence" && i + 1 < argc) {
       config.detection.confidenceThreshold = std::stof(argv[++i]);
-    } else if (arg == "--gpu") {
+    } else if (arg == "--gpu" || arg == "--cuda") {
       config.model.useGPU = true;
+      config.detection.usingCuda = true;
     } else if (arg == "--frameskip" && i + 1 < argc) {
       config.detection.frameSkip = std::stoi(argv[++i]);
     } else if (arg == "--input-size" && i + 1 < argc) {
@@ -230,8 +232,10 @@ int main(int argc, char *argv[]) {
               frame.clone(),
               numFrames}); // Clone to ensure each frame is independent
         }
+        numFrames++;
+      } else {
+        totalFrames--;
       }
-      numFrames++;
     }
     std::cout << "Finished reading all frames: " << numFrames << std::endl;
   });
@@ -243,13 +247,13 @@ int main(int argc, char *argv[]) {
     processFrame(config, frameQueue, postProcessQueue, objectDetector1,
                  pathPlanner1);
   });
-  std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  //std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
-  std::thread detectorThread2([&]() {
-    SetCurrentThreadName(L"ProcessFrame_Thread2");
-    processFrame(config, frameQueue, postProcessQueue, objectDetector2,
-                 pathPlanner2);
-  });
+  //std::thread detectorThread2([&]() {
+  //  SetCurrentThreadName(L"ProcessFrame_Thread2");
+  //  processFrame(config, frameQueue, postProcessQueue, objectDetector2,
+  //               pathPlanner2);
+  //});
 
   // std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
@@ -275,8 +279,8 @@ int main(int argc, char *argv[]) {
 
     while (true) {
 
-      if (!postProcessQueue.try_pop(frameData)){
-          continue;
+      if (!postProcessQueue.try_pop(frameData)) {
+        continue;
       }
 
       buffer[frameData.frameNumber] = frameData;
@@ -293,7 +297,7 @@ int main(int argc, char *argv[]) {
         buffer.erase(nextExpectedFrameNumber);
         nextExpectedFrameNumber++;
         visualizer.draw(frameToDisplay.frame, cachedDetections, cachedPaths,
-                        config.visual);
+                        config.visual, config.detection);
 
         if (config.video.displayWindow) {
           videoProcessor.displayFrame(frameToDisplay.frame,
@@ -315,7 +319,7 @@ int main(int argc, char *argv[]) {
   });
   readFrameThread.join();
   detectorThread1.join();
-  detectorThread2.join();
+  //detectorThread2.join();
   // detectorThread3.join();
   drawThread.join();
   while (true) {

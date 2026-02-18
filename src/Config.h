@@ -41,10 +41,22 @@ struct Path {
 struct DetectionConfig {
   float confidenceThreshold = 0.5f; // Minimum confidence for detections
   float nmsThreshold = 0.4f;        // Non-maximum suppression threshold
-  int inputWidth = 416;             // YOLO input width
-  int inputHeight = 416;            // YOLO input height
-  int frameSkip = 2; // Process every Nth frame (1 = all frames, 2 = every other
-                     // frame, etc.)
+  int inputWidth = 256;  // YOLO input width (reduced for performance)
+  int inputHeight = 256; // YOLO input height (reduced for performance)
+  int frameSkip =
+      5; // Process every Nth frame (1 = all frames, 5 = every 5th frame)
+  bool usingCuda = false;
+  int batchSize =
+      4; // Number of frames to process in a batch (for CUDA optimization)
+
+  // Region of Interest (ROI) - only process this region of the frame
+  // Values are in normalized coordinates [0.0, 1.0] relative to frame size
+  // Set all to 0.0 to disable ROI (process entire frame)
+  bool useROI = true;     // Enable/disable ROI processing
+  float roiX = 0.3f;      // ROI left edge (0.0 = left side of frame)
+  float roiY = 0.0f;      // ROI top edge (0.3 = 30% down from top)
+  float roiWidth = 0.5f;  // ROI width (1.0 = full width)
+  float roiHeight = 0.7f; // ROI height (0.7 = 70% of frame height)
 
   // Classes to detect (COCO dataset indices)
   // 2: car, 3: motorcycle, 5: bus, 7: truck, 0: person
@@ -84,6 +96,7 @@ struct VisualConfig {
   bool showConfidence = true;
   bool showGrid = false; // Debug: show planning grid
   bool showFPS = false;
+  bool showROI = true; // Show ROI rectangle
 };
 
 // Video Processing Configuration
@@ -128,8 +141,8 @@ struct AppConfig {
 };
 
 struct preProcessFrameData {
-    cv::Mat frame;
-    int frameNumber;
+  cv::Mat frame;
+  int frameNumber;
 };
 struct FrameData {
   cv::Mat frame;
