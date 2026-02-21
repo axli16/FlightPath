@@ -8,16 +8,20 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 using namespace FlightPath;
 
 void SetCurrentThreadName(const std::wstring &name) {
+#ifdef _WIN32
   // GetCurrentThread() gets the handle, name.c_str() gets the L"Text"
   HRESULT hr = SetThreadDescription(GetCurrentThread(), name.c_str());
   if (FAILED(hr)) {
     // Optional: Handle error if the name couldn't be set
   }
+#endif
 }
 
 void printUsage(const char *programName) {
@@ -129,7 +133,7 @@ void processFrame(AppConfig &config,
     }
 
     // Push frame with detections (either fresh or cached)
-    postProcessQueue.push(FrameData{localFrame.frame.clone(), cachedDetections,
+    postProcessQueue.push(FrameData{localFrame.frame, cachedDetections,
                                     cachedPaths, localFrame.frameNumber});
   }
 }
@@ -221,7 +225,7 @@ int main(int argc, char *argv[]) {
             cropMessageShown = true;
           }
 
-          frameQueue.push(preProcessFrameData{croppedFrame.clone(), numFrames});
+          frameQueue.push(preProcessFrameData{croppedFrame, numFrames});
         } else if (config.video.autoScale) {
           cv::resize(
               frame, frame,
