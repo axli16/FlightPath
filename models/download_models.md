@@ -47,6 +47,28 @@ If you want a lighter model:
 
 3. **coco.names** (same as above)
 
+## Alternative: YOLOv4 Tiny (Smallest, Fastest)
+
+If you want the fastest model with lower resource usage:
+
+1. **yolov4-tiny.weights** (~23 MB)
+   - https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v4_pre/yolov4-tiny.weights
+
+2. **yolov4-tiny.cfg**
+   - https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4-tiny.cfg
+
+3. **coco.names** (same as above)
+
+### Quick Download (Windows PowerShell)
+
+```powershell
+# Download YOLOv4 Tiny weights
+Invoke-WebRequest -Uri "https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v4_pre/yolov4-tiny.weights" -OutFile "yolov4-tiny.weights"
+
+# Download YOLOv4 Tiny config
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4-tiny.cfg" -OutFile "yolov4-tiny.cfg"
+```
+
 ## Verify Downloads
 
 After downloading, your `models/` directory should contain:

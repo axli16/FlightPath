@@ -6,14 +6,14 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-
 namespace FlightPath {
 
 /**
  * @brief Plans navigable paths based on detected objects
  *
  * Analyzes the scene to find gaps between obstacles and
- * calculates potential driving paths.
+ * calculates the single best driving path using perspective
+ * heuristics to estimate 3D road geometry from the 2D frame.
  */
 class PathPlanner {
 public:
@@ -21,11 +21,11 @@ public:
   ~PathPlanner();
 
   /**
-   * @brief Find navigable paths in the scene
+   * @brief Find the single best navigable path in the scene
    * @param detections Detected objects in the frame
    * @param frameSize Size of the video frame
    * @param config Path planning configuration
-   * @return Vector of potential paths
+   * @return Vector containing 0 or 1 path (the most confident)
    */
   std::vector<Path> findPaths(const std::vector<Detection> &detections,
                               const cv::Size &frameSize,
@@ -34,20 +34,12 @@ public:
 private:
   /**
    * @brief Create occupancy grid from detections
-   * @param detections Detected objects
-   * @param frameSize Frame dimensions
-   * @param gridSize Grid resolution
-   * @return Occupancy grid (1 = occupied, 0 = free)
    */
   cv::Mat createOccupancyGrid(const std::vector<Detection> &detections,
                               const cv::Size &frameSize, int gridSize);
 
   /**
    * @brief Find gaps in the occupancy grid
-   * @param occupancyGrid Grid showing occupied/free space
-   * @param frameSize Original frame size
-   * @param config Path configuration
-   * @return Vector of potential paths
    */
   std::vector<Path> findGaps(const cv::Mat &occupancyGrid,
                              const cv::Size &frameSize,
@@ -55,20 +47,38 @@ private:
 
   /**
    * @brief Score a path based on width, distance, and alignment
-   * @param path Path to score
-   * @param frameSize Frame dimensions
-   * @param config Path configuration
-   * @return Score [0, 1]
    */
   float scorePath(const Path &path, const cv::Size &frameSize,
                   const PathConfig &config);
 
   /**
    * @brief Classify path type based on width
-   * @param path Path to classify
-   * @param config Path configuration
    */
-  void classifyPath(Path &path, const PathConfig &config);
+  void classifyPath(Path &path, const cv::Size &frameSize,
+                    const PathConfig &config);
+
+  /**
+   * @brief Compute perspective scale factor at a given y coordinate
+   * @param y Pixel row in the frame
+   * @param frameHeight Total frame height
+   * @param horizonY Horizon y coordinate in pixels
+   * @return Scale factor (higher = each pixel represents more real-world
+   * distance)
+   */
+  float perspectiveScale(float y, float frameHeight, float horizonY);
+
+  /**
+   * @brief Convert pixel gap width to approximate meters using perspective
+   */
+  float pixelWidthToMeters(float pixelWidth, float y, const cv::Size &frameSize,
+                           const PathConfig &config);
+
+  /**
+   * @brief Build a multi-waypoint path from bottom-center to target
+   *        with perspective-correct tapering
+   */
+  Path buildPerspectivePath(cv::Point target, const cv::Size &frameSize,
+                            const PathConfig &config);
 };
 
 } // namespace FlightPath

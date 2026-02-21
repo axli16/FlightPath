@@ -26,6 +26,7 @@ set(HEADERS
     src/PathPlanner.h
     src/Visualizer.h
     src/Config.h
+    src/utility/DroppingSafeQueue.h
 )
 
 # Create executable

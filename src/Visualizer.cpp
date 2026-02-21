@@ -65,33 +65,118 @@ void Visualizer::drawDetections(cv::Mat &frame,
 
 void Visualizer::drawPaths(cv::Mat &frame, const std::vector<Path> &paths,
                            const VisualConfig &config) {
-  // Draw paths from lowest score to highest (so best path is on top)
-  for (auto it = paths.rbegin(); it != paths.rend(); ++it) {
-    const Path &path = *it;
+  if (paths.empty())
+    return;
 
-    // Only draw safe and tight paths
-    if (path.type == Path::Type::BLOCKED) {
-      continue;
-    }
+  // We only draw the single best path
+  const Path &path = paths[0];
 
-    cv::Scalar color = getPathColor(path, config);
+  if (path.type == Path::Type::BLOCKED)
+    return;
+  if (path.waypoints.size() < 2)
+    return;
 
-    // Draw arrow from start to end
-    cv::arrowedLine(frame, path.start, path.end, color, config.arrowThickness,
-                    cv::LINE_AA, 0, config.arrowTipLength);
+  cv::Scalar color = getPathColor(path, config);
+  float frameHeight = static_cast<float>(frame.rows);
 
-    // Draw circle at end point
-    cv::circle(frame, path.end, 8, color, -1);
+  // --- Build a filled polygon that tapers with perspective ---
+  // For each waypoint, compute a left and right offset that shrinks as
+  // the point moves up the frame (farther from the camera).
+  std::vector<cv::Point> leftEdge, rightEdge;
 
-    // Draw path score
-    std::stringstream scoreText;
-    scoreText << std::fixed << std::setprecision(2) << (path.score * 100)
-              << "%";
+  // Base width at the bottom of the frame (in pixels)
+  float baseHalfWidth = frame.cols * 0.04f; // ~4% of frame width on each side
+  float minHalfWidth = 4.0f;                // Don't go thinner than 4 pixels
 
-    cv::Point textPos(path.end.x + 15, path.end.y - 5);
-    cv::putText(frame, scoreText.str(), textPos, cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                color, 2);
+  for (size_t i = 0; i < path.waypoints.size(); ++i) {
+    const cv::Point &wp = path.waypoints[i];
+
+    // Perspective taper: width shrinks toward the top of the frame
+    float t = static_cast<float>(frame.rows - wp.y) / frameHeight;
+    t = std::max(0.0f, std::min(1.0f, t));
+
+    // Cubic falloff for a more realistic perspective taper
+    float taperedWidth = baseHalfWidth * (1.0f - t * t * t);
+    taperedWidth = std::max(minHalfWidth, taperedWidth);
+
+    leftEdge.push_back(cv::Point(wp.x - static_cast<int>(taperedWidth), wp.y));
+    rightEdge.push_back(cv::Point(wp.x + static_cast<int>(taperedWidth), wp.y));
   }
+
+  // Combine into a single polygon (left edge forward, right edge reversed)
+  std::vector<cv::Point> polygon;
+  polygon.insert(polygon.end(), leftEdge.begin(), leftEdge.end());
+  polygon.insert(polygon.end(), rightEdge.rbegin(), rightEdge.rend());
+
+  // Draw semi-transparent filled polygon (the "road arrow")
+  cv::Mat overlay = frame.clone();
+  std::vector<std::vector<cv::Point>> polys = {polygon};
+  cv::fillPoly(overlay, polys, color, cv::LINE_AA);
+  cv::addWeighted(overlay, 0.30, frame, 0.70, 0, frame);
+
+  // --- Draw the outline for clarity ---
+  cv::polylines(frame, polys, true, color, 1, cv::LINE_AA);
+
+  // --- Draw thin centerline along waypoints ---
+  for (size_t i = 0; i + 1 < path.waypoints.size(); ++i) {
+    // Fade the line as it goes further
+    float t = static_cast<float>(i) / path.waypoints.size();
+    int alpha = static_cast<int>(255 * (1.0f - t * 0.6f));
+    cv::Scalar lineColor(color[0] * alpha / 255, color[1] * alpha / 255,
+                         color[2] * alpha / 255);
+    cv::line(frame, path.waypoints[i], path.waypoints[i + 1], lineColor, 2,
+             cv::LINE_AA);
+  }
+
+  // --- Draw arrowhead at the target end ---
+  if (path.waypoints.size() >= 2) {
+    cv::Point tip = path.waypoints.back();
+    cv::Point prev = path.waypoints[path.waypoints.size() - 2];
+
+    // Direction vector from prev to tip
+    float dx = static_cast<float>(tip.x - prev.x);
+    float dy = static_cast<float>(tip.y - prev.y);
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len > 0.0f) {
+      dx /= len;
+      dy /= len;
+
+      // Arrowhead size
+      float arrowLen = 18.0f;
+      float arrowSpread = 10.0f;
+
+      // Perpendicular direction
+      float px = -dy;
+      float py = dx;
+
+      cv::Point left(tip.x - static_cast<int>(dx * arrowLen + px * arrowSpread),
+                     tip.y -
+                         static_cast<int>(dy * arrowLen + py * arrowSpread));
+      cv::Point right(
+          tip.x - static_cast<int>(dx * arrowLen - px * arrowSpread),
+          tip.y - static_cast<int>(dy * arrowLen - py * arrowSpread));
+
+      std::vector<cv::Point> arrowHead = {tip, left, right};
+      std::vector<std::vector<cv::Point>> arrowPolys = {arrowHead};
+      cv::fillPoly(frame, arrowPolys, color, cv::LINE_AA);
+    }
+  }
+
+  // --- Draw score label near the target ---
+  std::stringstream scoreText;
+  scoreText << std::fixed << std::setprecision(0) << (path.score * 100) << "%";
+
+  cv::Point textPos(path.end.x + 15, path.end.y - 10);
+  // Background for readability
+  int baseline = 0;
+  cv::Size textSize = cv::getTextSize(scoreText.str(), cv::FONT_HERSHEY_SIMPLEX,
+                                      0.55, 2, &baseline);
+  cv::rectangle(
+      frame, cv::Point(textPos.x - 2, textPos.y - textSize.height - 4),
+      cv::Point(textPos.x + textSize.width + 4, textPos.y + baseline + 2),
+      cv::Scalar(0, 0, 0), cv::FILLED);
+  cv::putText(frame, scoreText.str(), textPos, cv::FONT_HERSHEY_SIMPLEX, 0.55,
+              color, 2, cv::LINE_AA);
 }
 
 void Visualizer::drawInfoPanel(cv::Mat &frame,
@@ -110,16 +195,6 @@ void Visualizer::drawInfoPanel(cv::Mat &frame,
   int y = 25;
   int lineSpacing = 25;
 
-  // FPS
-  //   if (config.showFPS) {
-  //     std::stringstream fpsText;
-  //     fpsText << "FPS: " << std::fixed << std::setprecision(1) << fps;
-  //     cv::putText(panel, fpsText.str(), cv::Point(10, y),
-  //                 cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255),
-  //                 2);
-  //     y += lineSpacing;
-  //   }
-
   // Detection count
   std::stringstream detText;
   detText << "Detections: " << detections.size();
@@ -127,31 +202,32 @@ void Visualizer::drawInfoPanel(cv::Mat &frame,
               0.6, cv::Scalar(255, 255, 255), 2);
   y += lineSpacing;
 
-  // Path count
-  int safePaths = 0;
-  for (const auto &path : paths) {
-    if (path.isSafe)
-      safePaths++;
-  }
-
-  std::stringstream pathText;
-  pathText << "Safe Paths: " << safePaths;
-  cv::putText(panel, pathText.str(), cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX,
-              0.6, cv::Scalar(0, 255, 0), 2);
-  y += lineSpacing;
-
-  // Best path score
+  // Path info
   if (!paths.empty() && paths[0].isSafe) {
+    std::stringstream pathText;
+    pathText << "Path: CLEAR";
+    cv::putText(panel, pathText.str(), cv::Point(10, y),
+                cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+    y += lineSpacing;
+
     std::stringstream scoreText;
-    scoreText << "Best Score: " << std::fixed << std::setprecision(1)
+    scoreText << "Confidence: " << std::fixed << std::setprecision(0)
               << (paths[0].score * 100) << "%";
     cv::putText(panel, scoreText.str(), cv::Point(10, y),
                 cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+  } else if (!paths.empty()) {
+    cv::putText(panel, "Path: TIGHT", cv::Point(10, y),
+                cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+  } else {
+    cv::putText(panel, "Path: NONE", cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX,
+                0.6, cv::Scalar(0, 0, 255), 2);
   }
 
   // Blend panel onto frame
-  cv::Mat roi = frame(cv::Rect(10, 10, panelWidth, panelHeight));
-  cv::addWeighted(roi, 0.3, panel, 0.7, 0, roi);
+  if (frame.cols >= panelWidth + 10 && frame.rows >= panelHeight + 10) {
+    cv::Mat roi = frame(cv::Rect(10, 10, panelWidth, panelHeight));
+    cv::addWeighted(roi, 0.3, panel, 0.7, 0, roi);
+  }
 }
 
 void Visualizer::drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
@@ -192,8 +268,8 @@ void Visualizer::draw(cv::Mat &frame, const std::vector<Detection> &detections,
   // Draw in order: ROI, detections, paths, info panel
   drawROI(frame, detectionConfig, visualConfig);
   drawDetections(frame, detections, visualConfig);
-  // drawPaths(frame, paths, visualConfig);
-  // drawInfoPanel(frame, detections, paths, visualConfig);
+  drawPaths(frame, paths, visualConfig);
+  drawInfoPanel(frame, detections, paths, visualConfig);
 }
 
 } // namespace FlightPath

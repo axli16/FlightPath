@@ -28,6 +28,9 @@ struct Path {
   float score;     // Path quality score [0, 1]
   bool isSafe;     // Is the path wide enough?
 
+  // Multi-point path for perspective-correct drawing
+  std::vector<cv::Point> waypoints;
+
   // Path classification
   enum class Type {
     SAFE,   // Wide, safe path
@@ -71,8 +74,11 @@ struct PathConfig {
   int gridResolution = 50;       // Grid cells for path planning
   float maxPathDistance = 50.0f; // Maximum path distance in meters
 
-  // Pixel to meter conversion (approximate, depends on camera)
-  float pixelsPerMeter = 20.0f; // Calibrate based on your camera
+  // Perspective model (no camera calibration needed)
+  float horizonRatio =
+      0.35f; // Vanishing point as fraction of frame height from top
+  float laneWidthAtBottom =
+      0.45f; // Lane width as fraction of frame width at bottom edge
 };
 
 // Visualization Configuration
