@@ -163,16 +163,21 @@ ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
     for (int i = 0; i < output.rows; ++i) {
       const float *data = output.ptr<float>(i);
 
-      // Get class scores (skip first 5 values: x, y, w, h, objectness)
-      cv::Mat scores = output.row(i).colRange(5, output.cols);
-      cv::Point classIdPoint;
-      double confidence;
+      // Optimization: Avoid cv::Mat construction and minMaxLoc overhead in hot loop
+      // Access raw pointer to class scores (skip first 5 values: x, y, w, h, objectness)
+      float confidence = -1.0f;
+      int classId = -1;
 
-      cv::minMaxLoc(scores, nullptr, &confidence, nullptr, &classIdPoint);
+      // Manual search for max class score
+      // Note: data[0..4] are box params, data[5..end] are class scores
+      for (int c = 5; c < output.cols; ++c) {
+        if (data[c] > confidence) {
+          confidence = data[c];
+          classId = c - 5;
+        }
+      }
 
       if (confidence > config.confidenceThreshold) {
-        int classId = classIdPoint.x;
-
         // Check if this class is in our target classes
         bool isTargetClass =
             std::find(config.targetClasses.begin(), config.targetClasses.end(),
