@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
   std::cout << "\n[3/3] Processing video..." << std::endl;
 
   // Main processing loop
-  cv::Mat frame;
+  // cv::Mat frame; // Removed from outer scope
   int frameCount = 0;
   int savedFrameCount = 0;
   int target_fps = 24;
@@ -215,6 +215,7 @@ int main(int argc, char *argv[]) {
 
     while (numFrames < totalFrames) {
       // Auto-crop if enabled and frame is too large
+      cv::Mat frame; // Moved to inner scope to ensure fresh allocation per frame
 
       while (frameQueue.size() > 1000) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -229,16 +230,17 @@ int main(int argc, char *argv[]) {
             cropMessageShown = true;
           }
 
-          frameQueue.push(preProcessFrameData{croppedFrame.clone(), numFrames});
+          // Optimization: Avoid redundant clone. croppedFrame is a fresh sub-matrix or frame,
+          // and frame is local to this loop iteration.
+          frameQueue.push(preProcessFrameData{croppedFrame, numFrames});
         } else if (config.video.autoScale) {
           cv::resize(
               frame, frame,
               cv::Size(config.video.targetWidth, config.video.targetHeight));
-          frameQueue.push(preProcessFrameData{frame.clone(), numFrames});
+          frameQueue.push(preProcessFrameData{frame, numFrames});
         } else {
-          frameQueue.push(preProcessFrameData{
-              frame.clone(),
-              numFrames}); // Clone to ensure each frame is independent
+          // Optimization: Avoid redundant clone. frame is local and unique to this iteration.
+          frameQueue.push(preProcessFrameData{frame, numFrames});
         }
         numFrames++;
       } else {
