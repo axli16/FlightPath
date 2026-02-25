@@ -37,12 +37,9 @@ cv::Mat PathPlanner::createOccupancyGrid(const std::vector<Detection>& detection
         gridRight = std::max(0, std::min(gridRight, gridSize - 1));
         gridBottom = std::max(0, std::min(gridBottom, gridSize - 1));
         
-        // Mark cells as occupied
-        for (int y = gridTop; y <= gridBottom; ++y) {
-            for (int x = gridLeft; x <= gridRight; ++x) {
-                grid.at<uchar>(y, x) = 255;
-            }
-        }
+        // Mark cells as occupied using optimized OpenCV primitive
+        cv::rectangle(grid, cv::Point(gridLeft, gridTop), cv::Point(gridRight + 1, gridBottom + 1),
+                      cv::Scalar(255), cv::FILLED);
     }
     
     return grid;
