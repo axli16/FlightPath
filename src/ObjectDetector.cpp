@@ -163,6 +163,13 @@ ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
     for (int i = 0; i < output.rows; ++i) {
       const float *data = output.ptr<float>(i);
 
+      // Optimization: Early exit if objectness score is below threshold
+      // data[4] is objectness score. Class probabilities are multiplied by objectness.
+      // So any class score will be <= data[4].
+      if (data[4] <= config.confidenceThreshold) {
+        continue;
+      }
+
       // Optimization: Avoid cv::Mat construction and minMaxLoc overhead in hot loop
       // Access raw pointer to class scores (skip first 5 values: x, y, w, h, objectness)
       float confidence = -1.0f;
