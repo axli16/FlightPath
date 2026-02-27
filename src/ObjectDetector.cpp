@@ -128,14 +128,14 @@ ObjectDetector::detect(const cv::Mat &frame,
     }
 
     // Create blob from frame (or ROI)
-    cv::Mat blob;
+    // Optimization: Reuse buffer for input blob
     cv::dnn::blobFromImage(
-        processFrame, blob, 1 / 255.0,
+        processFrame, inputBlob_, 1 / 255.0,
         cv::Size(detectionConfig.inputWidth, detectionConfig.inputHeight),
         cv::Scalar(0, 0, 0), true, false);
 
     // Set input to network
-    network_.setInput(blob);
+    network_.setInput(inputBlob_);
 
     // Forward pass
     std::vector<cv::Mat> outputs;
@@ -284,14 +284,14 @@ ObjectDetector::detectBatch(const std::vector<cv::Mat> &frames,
     }
 
     // Create batch blob from all frames (CUDA optimized)
-    cv::Mat batchBlob;
+    // Optimization: Reuse buffer for batch input blob
     cv::dnn::blobFromImages(
-        processedFrames, batchBlob, 1 / 255.0,
+        processedFrames, inputBlob_, 1 / 255.0,
         cv::Size(detectionConfig.inputWidth, detectionConfig.inputHeight),
         cv::Scalar(0, 0, 0), true, false);
 
     // Single forward pass for entire batch
-    network_.setInput(batchBlob);
+    network_.setInput(inputBlob_);
     std::vector<cv::Mat> outputs;
     network_.forward(outputs, outputLayerNames_);
 

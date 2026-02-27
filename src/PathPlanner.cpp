@@ -10,14 +10,17 @@ PathPlanner::PathPlanner() {
 PathPlanner::~PathPlanner() {
 }
 
-cv::Mat PathPlanner::createOccupancyGrid(const std::vector<Detection>& detections,
+const cv::Mat& PathPlanner::createOccupancyGrid(const std::vector<Detection>& detections,
                                          const cv::Size& frameSize,
                                          int gridSize) {
-    // Create grid (0 = free, 255 = occupied)
-    cv::Mat grid = cv::Mat::zeros(gridSize, gridSize, CV_8UC1);
+    // Optimization: Reuse buffer to avoid reallocation
+    if (occupancyGrid_.size() != cv::Size(gridSize, gridSize) || occupancyGrid_.type() != CV_8UC1) {
+        occupancyGrid_.create(gridSize, gridSize, CV_8UC1);
+    }
+    occupancyGrid_.setTo(0); // Reset grid
     
     if (detections.empty()) {
-        return grid;
+        return occupancyGrid_;
     }
     
     float cellWidth = static_cast<float>(frameSize.width) / gridSize;
@@ -38,11 +41,11 @@ cv::Mat PathPlanner::createOccupancyGrid(const std::vector<Detection>& detection
         gridBottom = std::max(0, std::min(gridBottom, gridSize - 1));
         
         // Mark cells as occupied using optimized OpenCV primitive
-        cv::rectangle(grid, cv::Point(gridLeft, gridTop), cv::Point(gridRight + 1, gridBottom + 1),
+        cv::rectangle(occupancyGrid_, cv::Point(gridLeft, gridTop), cv::Point(gridRight + 1, gridBottom + 1),
                       cv::Scalar(255), cv::FILLED);
     }
     
-    return grid;
+    return occupancyGrid_;
 }
 
 std::vector<Path> PathPlanner::findGaps(const cv::Mat& occupancyGrid,
@@ -65,8 +68,11 @@ std::vector<Path> PathPlanner::findGaps(const cv::Mat& occupancyGrid,
         bool inGap = false;
         int gapStart = 0;
         
+        // Optimization: Get row pointer to avoid repeated .at() calls
+        const uchar* rowPtr = occupancyGrid.ptr<uchar>(row);
+
         for (int col = 0; col < gridSize; ++col) {
-            bool isFree = (occupancyGrid.at<uchar>(row, col) == 0);
+            bool isFree = (rowPtr[col] == 0);
             
             if (isFree && !inGap) {
                 // Start of a gap
@@ -174,8 +180,8 @@ void PathPlanner::classifyPath(Path& path, const PathConfig& config) {
 std::vector<Path> PathPlanner::findPaths(const std::vector<Detection>& detections,
                                          const cv::Size& frameSize,
                                          const PathConfig& config) {
-    // Create occupancy grid
-    cv::Mat occupancyGrid = createOccupancyGrid(detections, frameSize, config.gridResolution);
+    // Create occupancy grid (returns reference to member buffer)
+    const cv::Mat& occupancyGrid = createOccupancyGrid(detections, frameSize, config.gridResolution);
     
     // Find potential paths
     std::vector<Path> paths = findGaps(occupancyGrid, frameSize, config);
