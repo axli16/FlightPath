@@ -133,7 +133,7 @@ cv::Mat VideoProcessor::cropToCenter(const cv::Mat &frame, int maxWidth,
             << " to " << cropWidth << "x" << cropHeight << " (center ROI)"
             << std::endl;
 
-  return frame(roi).clone();
+  return frame(roi);
 }
 
 } // namespace FlightPath
