@@ -85,6 +85,9 @@ private:
 
   // Cache output layer names
   std::vector<std::string> outputLayerNames_;
+
+  // Optimization: Reuse buffer to avoid reallocation
+  cv::Mat inputBlob_;
 };
 
 } // namespace FlightPath

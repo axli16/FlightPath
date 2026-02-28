@@ -39,7 +39,7 @@ private:
    * @param gridSize Grid resolution
    * @return Occupancy grid (1 = occupied, 0 = free)
    */
-  cv::Mat createOccupancyGrid(const std::vector<Detection> &detections,
+  const cv::Mat& createOccupancyGrid(const std::vector<Detection> &detections,
                               const cv::Size &frameSize, int gridSize);
 
   /**
@@ -69,6 +69,9 @@ private:
    * @param config Path configuration
    */
   void classifyPath(Path &path, const PathConfig &config);
+
+  // Optimization: Reuse buffer to avoid reallocation
+  cv::Mat occupancyGrid_;
 };
 
 } // namespace FlightPath
