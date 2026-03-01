@@ -91,13 +91,9 @@ ObjectDetector::detect(const cv::Mat &frame,
     return std::vector<Detection>();
   }
 
-  if (detectionConfig.usingCuda) {
-    network_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-    network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
-  } else {
-    network_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    network_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-  }
+  // Optimization: Remove redundant network_.setPreferableBackend/Target calls here.
+  // These are already set once in loadModel() and calling them every frame
+  // causes unnecessary OpenCV state-checking overhead.
 
   try {
     cv::Mat processFrame;
