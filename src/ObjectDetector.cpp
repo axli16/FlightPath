@@ -269,9 +269,9 @@ ObjectDetector::detectBatch(const std::vector<cv::Mat> &frames,
 
         roi = cv::Rect(roiX, roiY, roiWidth, roiHeight);
         roi &= cv::Rect(0, 0, frame.cols, frame.rows);
-        processFrame = frame(roi).clone();
+        processFrame = frame(roi);
       } else {
-        processFrame = frame.clone();
+        processFrame = frame;
         roi = cv::Rect(0, 0, frame.cols, frame.rows);
       }
 
