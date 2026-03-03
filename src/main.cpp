@@ -289,15 +289,20 @@ int main(int argc, char *argv[]) {
 
     while (true) {
 
-      if (!postProcessQueue.try_pop(frameData)) {
-        continue;
-      }
+      // Optimization: Replace busy-wait try_pop with blocking pop to prevent
+      // 100% CPU starvation on the draw thread.
+      postProcessQueue.pop(frameData);
 
-      buffer[frameData.frameNumber] = frameData;
+      // Optimization: Use move semantics to avoid deep copies of FrameData
+      // (which contains large vectors like std::vector<Detection>).
+      buffer[frameData.frameNumber] = std::move(frameData);
 
-      if (buffer.count(nextExpectedFrameNumber)) {
+      // Optimization: Process all available sequential frames from the reordering
+      // buffer to prevent deadlocks when frames arrive out of order.
+      while (buffer.count(nextExpectedFrameNumber)) {
         auto frame_start = std::chrono::high_resolution_clock::now();
-        FrameData frameToDisplay = buffer[nextExpectedFrameNumber];
+        // Optimization: Move out of buffer to avoid deep copy before erasure
+        FrameData frameToDisplay = std::move(buffer[nextExpectedFrameNumber]);
 
         if (frameToDisplay.frameNumber % config.detection.frameSkip == 0) {
           cachedDetections = frameToDisplay.detections;
