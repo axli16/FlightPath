@@ -88,6 +88,11 @@ private:
 
   // Optimization: Reuse buffer to avoid reallocation
   cv::Mat inputBlob_;
+
+  // Optimization: Reuse buffers for post-processing to avoid reallocation
+  std::vector<int> classIds_;
+  std::vector<float> confidences_;
+  std::vector<cv::Rect> boxes_;
 };
 
 } // namespace FlightPath
