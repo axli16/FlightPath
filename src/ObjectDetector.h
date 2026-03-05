@@ -88,6 +88,14 @@ private:
 
   // Optimization: Reuse buffer to avoid reallocation
   cv::Mat inputBlob_;
+
+  // Optimization: Pre-allocate vectors to avoid reallocation overhead in hot
+  // loops
+  std::vector<cv::Mat> networkOutputs_;
+  std::vector<int> classIds_;
+  std::vector<float> confidences_;
+  std::vector<cv::Rect> boxes_;
+  std::vector<int> nmsIndices_;
 };
 
 } // namespace FlightPath

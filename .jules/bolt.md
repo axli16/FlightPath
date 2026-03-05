@@ -13,3 +13,7 @@
 ## 2024-05-27 - [Draw Thread Synchronization & Buffer Reordering Deadlock]
 **Learning:** In the multi-threaded pipeline, using a busy-wait spin loop (`while(true) { if (!queue.try_pop()) continue; }`) on the consumer (draw) thread consumes 100% of a CPU core, starving producer threads (like YOLO detection). Replacing it with a blocking `pop()` is essential. However, when blocking, the buffer reordering logic MUST process all sequential frames in a loop (`while (buffer.count(nextExpectedFrameNumber))`). A simple `if` condition would process only one frame per `pop()`, deadlocking the thread if frames arrived out-of-order and multiple sequential frames were waiting in the buffer.
 **Action:** Always pair blocking queue operations with exhaustive processing of reordering buffers (`while` instead of `if`) to prevent deadlocks and ensure continuous stream processing.
+
+## 2024-05-28 - [YOLO Post-Processing Dynamic Memory Avoidance]
+**Learning:** In high-frequency processing loops (like YOLO post-processing per frame), allocating and destroying large `std::vector` objects locally (e.g., `networkOutputs`, `classIds`, `confidences`, `boxes`, `nmsIndices`) incurs significant dynamic memory reallocation overhead.
+**Action:** Always hoist large `std::vector` declarations from local scope to class member variables and use `.clear()` on them each frame. This retains the previously allocated capacity and eliminates continuous dynamic memory allocation overhead in hot loops.
