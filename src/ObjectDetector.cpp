@@ -91,9 +91,9 @@ ObjectDetector::detect(const cv::Mat &frame,
     return std::vector<Detection>();
   }
 
-  // Optimization: Remove redundant network_.setPreferableBackend/Target calls here.
-  // These are already set once in loadModel() and calling them every frame
-  // causes unnecessary OpenCV state-checking overhead.
+  // Optimization: Remove redundant network_.setPreferableBackend/Target calls
+  // here. These are already set once in loadModel() and calling them every
+  // frame causes unnecessary OpenCV state-checking overhead.
 
   try {
     cv::Mat processFrame;
@@ -134,11 +134,11 @@ ObjectDetector::detect(const cv::Mat &frame,
     network_.setInput(inputBlob_);
 
     // Forward pass
-    std::vector<cv::Mat> outputs;
-    network_.forward(outputs, outputLayerNames_);
+    outputs_.clear();
+    network_.forward(outputs_, outputLayerNames_);
 
     // Post-process outputs (pass ROI offset for coordinate adjustment)
-    return postProcess(outputs, processFrame, detectionConfig, roi);
+    return postProcess(outputs_, processFrame, detectionConfig, roi);
 
   } catch (const cv::Exception &e) {
     std::cerr << "OpenCV exception during detection: " << e.what() << std::endl;
@@ -150,9 +150,9 @@ std::vector<Detection>
 ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
                             const cv::Mat &frame, const DetectionConfig &config,
                             const cv::Rect &roi) {
-  std::vector<int> classIds;
-  std::vector<float> confidences;
-  std::vector<cv::Rect> boxes;
+  classIds_.clear();
+  confidences_.clear();
+  boxes_.clear();
 
   // Parse YOLO outputs
   for (const auto &output : outputs) {
@@ -160,14 +160,15 @@ ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
       const float *data = output.ptr<float>(i);
 
       // Optimization: Early exit if objectness score is below threshold
-      // data[4] is objectness score. Class probabilities are multiplied by objectness.
-      // So any class score will be <= data[4].
+      // data[4] is objectness score. Class probabilities are multiplied by
+      // objectness. So any class score will be <= data[4].
       if (data[4] <= config.confidenceThreshold) {
         continue;
       }
 
-      // Optimization: Avoid cv::Mat construction and minMaxLoc overhead in hot loop
-      // Access raw pointer to class scores (skip first 5 values: x, y, w, h, objectness)
+      // Optimization: Avoid cv::Mat construction and minMaxLoc overhead in hot
+      // loop Access raw pointer to class scores (skip first 5 values: x, y, w,
+      // h, objectness)
       float confidence = -1.0f;
       int classId = -1;
 
@@ -201,29 +202,29 @@ ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
           left += roi.x;
           top += roi.y;
 
-          classIds.push_back(classId);
-          confidences.push_back(static_cast<float>(confidence));
-          boxes.push_back(cv::Rect(left, top, width, height));
+          classIds_.push_back(classId);
+          confidences_.push_back(static_cast<float>(confidence));
+          boxes_.push_back(cv::Rect(left, top, width, height));
         }
       }
     }
   }
 
   // Apply Non-Maximum Suppression
-  std::vector<int> indices;
-  cv::dnn::NMSBoxes(boxes, confidences, config.confidenceThreshold,
-                    config.nmsThreshold, indices);
+  indices_.clear();
+  cv::dnn::NMSBoxes(boxes_, confidences_, config.confidenceThreshold,
+                    config.nmsThreshold, indices_);
 
   // Create Detection objects
   std::vector<Detection> detections;
-  for (int idx : indices) {
+  for (int idx : indices_) {
     Detection det;
-    det.classId = classIds[idx];
-    det.className = classNames_[classIds[idx]];
-    det.confidence = confidences[idx];
-    det.boundingBox = boxes[idx];
-    det.center = cv::Point(boxes[idx].x + boxes[idx].width / 2,
-                           boxes[idx].y + boxes[idx].height / 2);
+    det.classId = classIds_[idx];
+    det.className = classNames_[classIds_[idx]];
+    det.confidence = confidences_[idx];
+    det.boundingBox = boxes_[idx];
+    det.center = cv::Point(boxes_[idx].x + boxes_[idx].width / 2,
+                           boxes_[idx].y + boxes_[idx].height / 2);
 
     detections.push_back(det);
   }
@@ -288,14 +289,14 @@ ObjectDetector::detectBatch(const std::vector<cv::Mat> &frames,
 
     // Single forward pass for entire batch
     network_.setInput(inputBlob_);
-    std::vector<cv::Mat> outputs;
-    network_.forward(outputs, outputLayerNames_);
+    outputs_.clear();
+    network_.forward(outputs_, outputLayerNames_);
 
     // Post-process each frame's results
     // Process outputs for each frame in the batch
     for (size_t i = 0; i < processedFrames.size(); ++i) {
       auto detections =
-          postProcess(outputs, processedFrames[i], detectionConfig, rois[i]);
+          postProcess(outputs_, processedFrames[i], detectionConfig, rois[i]);
       allDetections.push_back(detections);
     }
 
