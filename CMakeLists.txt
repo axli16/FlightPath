@@ -17,6 +17,8 @@ set(SOURCES
     src/ObjectDetector.cpp
     src/PathPlanner.cpp
     src/Visualizer.cpp
+    src/LaneDetector.cpp
+    src/RoadDetector.cpp
 )
 
 # Header files
@@ -25,6 +27,8 @@ set(HEADERS
     src/ObjectDetector.h
     src/PathPlanner.h
     src/Visualizer.h
+    src/LaneDetector.h
+    src/RoadDetector.h
     src/Config.h
     src/utility/DroppingSafeQueue.h
 )

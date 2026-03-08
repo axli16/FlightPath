@@ -10,10 +10,11 @@
 namespace FlightPath {
 
 /**
- * @brief Handles visualization of detections and paths
+ * @brief Iron Man HUD-style visualization of detections and paths
  *
- * Draws bounding boxes, labels, arrows, and overlays
- * on video frames to show detection and path planning results.
+ * Renders futuristic holographic overlays: animated chevron arrows,
+ * neon glow path boundaries, scanline grid, directional arc,
+ * and vehicle detection boxes.
  */
 class Visualizer {
 public:
@@ -22,46 +23,69 @@ public:
 
   /**
    * @brief Draw all visualizations on a frame
-   * @param frame Frame to draw on (modified in place)
-   * @param detections Detected objects
-   * @param paths Planned paths
-   * @param visualConfig Visualization configuration
-   * @param detectionConfig Detection configuration (for ROI)
    */
   void draw(cv::Mat &frame, const std::vector<Detection> &detections,
             const std::vector<Path> &paths, const VisualConfig &visualConfig,
-            const DetectionConfig &detectionConfig);
+            const DetectionConfig &detectionConfig,
+            const TrapezoidROI &trapezoidROI = TrapezoidROI());
 
 private:
-  /**
-   * @brief Draw bounding boxes for detections
-   */
+  // --- Detection rendering ---
   void drawDetections(cv::Mat &frame, const std::vector<Detection> &detections,
                       const VisualConfig &config);
 
+  // --- HUD Path rendering ---
   /**
-   * @brief Draw path arrows
+   * @brief Main HUD path renderer (replaces old drawPaths)
+   * Draws the full Iron Man-style navigation overlay
    */
-  void drawPaths(cv::Mat &frame, const std::vector<Path> &paths,
-                 const VisualConfig &config);
+  void drawHUDPath(cv::Mat &frame, const std::vector<Path> &paths,
+                   const VisualConfig &config);
 
   /**
-   * @brief Draw info panel with stats
+   * @brief Draw animated V-shaped chevrons along the path
    */
-  void drawInfoPanel(cv::Mat &frame, const std::vector<Detection> &detections,
-                     const std::vector<Path> &paths,
+  void drawChevrons(cv::Mat &frame, const std::vector<cv::Point> &waypoints,
+                    const VisualConfig &config);
+
+  /**
+   * @brief Draw neon glow effect along path edges
+   */
+  void drawGlowEffect(cv::Mat &frame, const std::vector<cv::Point> &polygon,
+                      const cv::Scalar &color, const VisualConfig &config);
+
+  /**
+   * @brief Draw holographic scanline grid across the path polygon
+   */
+  void drawScanlines(cv::Mat &frame, const std::vector<cv::Point> &polygon,
                      const VisualConfig &config);
 
   /**
-   * @brief Get color for path based on type
+   * @brief Draw semicircular directional arc at bottom of screen
    */
-  cv::Scalar getPathColor(const Path &path, const VisualConfig &config);
+  void drawDirectionArc(cv::Mat &frame, const std::vector<Path> &paths,
+                        const VisualConfig &config);
 
   /**
-   * @brief Draw ROI rectangle
+   * @brief Draw modernized HUD info panel
+   */
+  void drawHUDInfoPanel(cv::Mat &frame,
+                        const std::vector<Detection> &detections,
+                        const std::vector<Path> &paths,
+                        const VisualConfig &config);
+
+  /**
+   * @brief Draw ROI overlay
    */
   void drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
-               const VisualConfig &visualConfig);
+               const VisualConfig &visualConfig,
+               const TrapezoidROI &trapezoidROI = TrapezoidROI());
+
+  // --- Utility ---
+  cv::Scalar getPathColor(const Path &path, const VisualConfig &config);
+
+  // Animation frame counter (increments each draw call)
+  int frameCounter_ = 0;
 };
 
 } // namespace FlightPath

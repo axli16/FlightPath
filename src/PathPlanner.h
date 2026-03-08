@@ -25,24 +25,53 @@ public:
    * @param detections Detected objects in the frame
    * @param frameSize Size of the video frame
    * @param config Path planning configuration
+   * @param detectionConfig Detection config (for ROI bounds)
    * @return Vector containing 0 or 1 path (the most confident)
    */
-  std::vector<Path> findPaths(const std::vector<Detection> &detections,
-                              const cv::Size &frameSize,
-                              const PathConfig &config);
+  std::vector<Path>
+  findPaths(const std::vector<Detection> &detections, const cv::Size &frameSize,
+            const PathConfig &config, const DetectionConfig &detectionConfig,
+            const TrapezoidROI &trapezoidROI = TrapezoidROI());
+
+  /**
+   * @brief Find paths using ML road mask + vehicle detections
+   * @param detections Detected vehicles
+   * @param frameSize Frame dimensions
+   * @param config Path planning configuration
+   * @param detectionConfig Detection config (for ROI bounds)
+   * @param roadMask Binary mask of drivable road (CV_8UC1)
+   * @param trapezoidROI Optional trapezoid ROI fallback
+   * @return Vector containing best path
+   */
+  std::vector<Path>
+  findPaths(const std::vector<Detection> &detections, const cv::Size &frameSize,
+            const PathConfig &config, const DetectionConfig &detectionConfig,
+            const cv::Mat &roadMask,
+            const TrapezoidROI &trapezoidROI = TrapezoidROI());
 
 private:
   /**
-   * @brief Create occupancy grid from detections
+   * @brief Compute pixel ROI rectangle from normalized DetectionConfig
    */
-  cv::Mat createOccupancyGrid(const std::vector<Detection> &detections,
-                              const cv::Size &frameSize, int gridSize);
+  cv::Rect computeROI(const cv::Size &frameSize,
+                      const DetectionConfig &detectionConfig);
 
   /**
-   * @brief Find gaps in the occupancy grid
+   * @brief Create occupancy grid from detections within the ROI
    */
-  std::vector<Path> findGaps(const cv::Mat &occupancyGrid,
-                             const cv::Size &frameSize,
+  cv::Mat createOccupancyGrid(const std::vector<Detection> &detections,
+                              const cv::Rect &roi, int gridSize);
+
+  /**
+   * @brief Mask occupancy grid cells outside the trapezoid polygon
+   */
+  void maskOccupancyGrid(cv::Mat &grid, const cv::Rect &roi,
+                         const TrapezoidROI &trapezoid);
+
+  /**
+   * @brief Find gaps in the occupancy grid, preferring paths near center
+   */
+  std::vector<Path> findGaps(const cv::Mat &occupancyGrid, const cv::Rect &roi,
                              const PathConfig &config);
 
   /**
@@ -74,11 +103,29 @@ private:
                            const PathConfig &config);
 
   /**
-   * @brief Build a multi-waypoint path from bottom-center to target
-   *        with perspective-correct tapering
+   * @brief Build a multi-waypoint path from ROI bottom-center to target
+   *        with perspective-correct tapering, clamped inside ROI
    */
-  Path buildPerspectivePath(cv::Point target, const cv::Size &frameSize,
+  Path buildPerspectivePath(cv::Point target, const cv::Rect &roi,
+                            const cv::Size &frameSize,
                             const PathConfig &config);
+
+  /**
+   * @brief Create occupancy grid from detections + road mask
+   */
+  cv::Mat createOccupancyGridWithRoad(const std::vector<Detection> &detections,
+                                      const cv::Mat &roadMask,
+                                      const cv::Rect &roi, int gridSize);
+
+  /**
+   * @brief Smooth path waypoints between frames using EMA
+   */
+  void smoothPath(Path &path);
+
+  // Previous frame's best path for temporal smoothing
+  Path prevPath_;
+  bool hasPrevPath_ = false;
+  float pathSmoothingAlpha_ = 0.5f;
 };
 
 } // namespace FlightPath
