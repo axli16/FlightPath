@@ -12,6 +12,7 @@ A C++ application that processes dashcam footage to detect objects and identify 
 ## Prerequisites
 
 ### Required
+
 - **CMake** (3.15 or higher)
 - **C++ Compiler** with C++17 support (MSVC 2019+, GCC 7+, or Clang 5+)
 - **OpenCV** (4.x recommended)
@@ -34,6 +35,7 @@ A C++ application that processes dashcam footage to detect objects and identify 
 ## Setup
 
 1. **Clone or navigate to the project**
+
    ```bash
    cd f:\FlightPath
    ```
@@ -82,6 +84,9 @@ start build/FlightPath.sln
 # Basic usage
 .\build\bin\Release\FlightPath.exe <video_path>
 
+# Using CUDA
+.\build\bin\Release\FlightPath.exe <video_path> --cuda
+
 # Example
 .\build\bin\Release\FlightPath.exe data\dashcam_highway.mp4
 
@@ -93,6 +98,7 @@ start build/FlightPath.sln
 ```
 
 ### Controls (during playback)
+
 - **Space**: Pause/Resume
 - **ESC**: Exit
 - **S**: Save current frame
@@ -128,6 +134,7 @@ FlightPath/
 ## Learning Resources
 
 This project demonstrates key computer vision concepts:
+
 - Deep learning-based object detection
 - Video processing pipelines
 - Spatial reasoning and path planning
@@ -136,15 +143,18 @@ This project demonstrates key computer vision concepts:
 ## Troubleshooting
 
 ### OpenCV not found
+
 - Ensure `OpenCV_DIR` environment variable is set
 - Verify OpenCV bin directory is in PATH
 - Try specifying manually: `cmake -DOpenCV_DIR=C:\opencv\build ..`
 
 ### Model files missing
+
 - Download from the links in `models/download_models.md`
 - Ensure files are in the `models/` directory
 
 ### Low FPS / Performance issues
+
 - Try reducing video resolution
 - Adjust detection confidence threshold
 - Use GPU-accelerated OpenCV build (CUDA)
