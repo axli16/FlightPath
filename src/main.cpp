@@ -1,6 +1,8 @@
 #include "Config.h"
+#include "LaneDetector.h"
 #include "ObjectDetector.h"
 #include "PathPlanner.h"
+#include "RoadDetector.h"
 #include "VideoProcessor.h"
 #include "Visualizer.h"
 #include "utility/DroppingSafeQueue.h"
@@ -87,6 +89,10 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
       int size = std::stoi(argv[++i]);
       config.video.maxCropWidth = size;
       config.video.maxCropHeight = size;
+    } else if (arg == "--road-model" && i + 1 < argc) {
+      config.road.modelPath = argv[++i];
+    } else if (arg == "--no-road") {
+      config.road.enabled = false;
     } else if (arg == "--help" || arg == "-h") {
       return false;
     }
@@ -98,13 +104,17 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
 void processFrame(AppConfig &config,
                   DroppingSafeQueue<preProcessFrameData> &frameQueue,
                   DroppingSafeQueue<FrameData> &postProcessQueue,
-                  ObjectDetector &objectDetector, PathPlanner &pathPlanner) {
+                  ObjectDetector &objectDetector, PathPlanner &pathPlanner,
+                  LaneDetector &laneDetector, RoadDetector &roadDetector) {
 
   preProcessFrameData localFrame; // Use a local frame variable for this thread
 
   // Cache for frame skipping optimization
   std::vector<Detection> cachedDetections;
   std::vector<Path> cachedPaths;
+  TrapezoidROI cachedTrapezoid;
+  cv::Mat cachedRoadMask;
+  std::vector<std::vector<cv::Point>> cachedLaneLines;
 
   while (true) {
     frameQueue.pop(localFrame);
@@ -113,6 +123,17 @@ void processFrame(AppConfig &config,
               << std::endl;
 
     if (localFrame.frameNumber % config.detection.frameSkip == 0) {
+      // Detect lane lines and build trapezoidal ROI
+      auto laneStart = std::chrono::high_resolution_clock::now();
+      cachedTrapezoid = laneDetector.detectLanes(localFrame.frame, config.lane);
+      auto laneEnd = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> laneElapsed =
+          laneEnd - laneStart;
+      std::cout << "  Lane detection took: " << laneElapsed.count() << " ms"
+                << (cachedTrapezoid.valid ? " (trapezoid found)"
+                                          : " (fallback)")
+                << std::endl;
+
       auto start = std::chrono::high_resolution_clock::now();
 
       // Detect objects
@@ -124,10 +145,29 @@ void processFrame(AppConfig &config,
       std::cout << "  Detection took: " << elapsed.count() << " ms"
                 << std::endl;
 
-      // Plan paths
+      // Run UFLDv2 road detection if available
+      if (roadDetector.isLoaded()) {
+        auto roadStart = std::chrono::high_resolution_clock::now();
+        cachedRoadMask = roadDetector.detectRoad(localFrame.frame, config.road,
+                                                 cachedLaneLines);
+        auto roadEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> roadElapsed =
+            roadEnd - roadStart;
+        std::cout << "  Road detection took: " << roadElapsed.count() << " ms ("
+                  << cachedLaneLines.size() << " lanes)" << std::endl;
+      }
+
+      // Plan paths (use road mask if available, otherwise fallback)
       start = std::chrono::high_resolution_clock::now();
-      cachedPaths = pathPlanner.findPaths(cachedDetections,
-                                          localFrame.frame.size(), config.path);
+      if (!cachedRoadMask.empty()) {
+        cachedPaths = pathPlanner.findPaths(
+            cachedDetections, localFrame.frame.size(), config.path,
+            config.detection, cachedRoadMask, cachedTrapezoid);
+      } else {
+        cachedPaths = pathPlanner.findPaths(
+            cachedDetections, localFrame.frame.size(), config.path,
+            config.detection, cachedTrapezoid);
+      }
       end = std::chrono::high_resolution_clock::now();
       elapsed = end - start;
       std::cout << "  Path planning took: " << elapsed.count() << " ms"
@@ -135,10 +175,11 @@ void processFrame(AppConfig &config,
     }
 
     // Push frame with detections (either fresh or cached)
-    // Optimization: Avoid redundant clone. localFrame owns the data, and we transfer/share it with FrameData.
-    // Benchmark shows this saves ~3.5ms per frame at 1080p.
-    postProcessQueue.push(FrameData{localFrame.frame, cachedDetections,
-                                    cachedPaths, localFrame.frameNumber});
+    postProcessQueue.push(
+        FrameData{localFrame.frame.clone(), cachedDetections, cachedPaths,
+                  cachedTrapezoid,
+                  cachedRoadMask.empty() ? cv::Mat() : cachedRoadMask.clone(),
+                  cachedLaneLines, localFrame.frameNumber});
   }
 }
 
@@ -162,6 +203,8 @@ int main(int argc, char *argv[]) {
   PathPlanner pathPlanner1;
   PathPlanner pathPlanner2;
   PathPlanner pathPlanner3;
+  LaneDetector laneDetector1;
+  RoadDetector roadDetector1;
   Visualizer visualizer;
 
   DroppingSafeQueue<preProcessFrameData> frameQueue;
@@ -200,6 +243,17 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "\n[3/3] Processing video..." << std::endl;
+
+  // Load UFLDv2 road detection model if enabled
+  if (config.road.enabled) {
+    std::cout << "\n[Road] Loading UFLDv2 model..." << std::endl;
+    config.road.useGPU = config.model.useGPU;
+    if (!roadDetector1.loadModel(config.road)) {
+      std::cerr << "Warning: Could not load road detection model, "
+                << "falling back to lane detection" << std::endl;
+      config.road.enabled = false;
+    }
+  }
 
   // Main processing loop
   // cv::Mat frame; // Removed from outer scope
@@ -255,15 +309,15 @@ int main(int argc, char *argv[]) {
   std::thread detectorThread1([&]() {
     SetCurrentThreadName(L"ProcessFrame_Thread1");
     processFrame(config, frameQueue, postProcessQueue, objectDetector1,
-                 pathPlanner1);
+                 pathPlanner1, laneDetector1, roadDetector1);
   });
-  //std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  // std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
-  //std::thread detectorThread2([&]() {
-  //  SetCurrentThreadName(L"ProcessFrame_Thread2");
-  //  processFrame(config, frameQueue, postProcessQueue, objectDetector2,
-  //               pathPlanner2);
-  //});
+  // std::thread detectorThread2([&]() {
+  //   SetCurrentThreadName(L"ProcessFrame_Thread2");
+  //   processFrame(config, frameQueue, postProcessQueue, objectDetector2,
+  //                pathPlanner2);
+  // });
 
   // std::this_thread::sleep_for(std::chrono::milliseconds(15));
 
@@ -312,7 +366,8 @@ int main(int argc, char *argv[]) {
         buffer.erase(nextExpectedFrameNumber);
         nextExpectedFrameNumber++;
         visualizer.draw(frameToDisplay.frame, cachedDetections, cachedPaths,
-                        config.visual, config.detection);
+                        config.visual, config.detection,
+                        frameToDisplay.trapezoidROI);
 
         if (config.video.displayWindow) {
           videoProcessor.displayFrame(frameToDisplay.frame,
@@ -334,8 +389,8 @@ int main(int argc, char *argv[]) {
   });
   readFrameThread.join();
   detectorThread1.join();
-  //detectorThread2.join();
-  // detectorThread3.join();
+  // detectorThread2.join();
+  //  detectorThread3.join();
   drawThread.join();
   while (true) {
     auto currentTime = std::chrono::high_resolution_clock::now();

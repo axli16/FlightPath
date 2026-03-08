@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <array>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
@@ -28,6 +29,9 @@ struct Path {
   float score;     // Path quality score [0, 1]
   bool isSafe;     // Is the path wide enough?
 
+  // Multi-point path for perspective-correct drawing
+  std::vector<cv::Point> waypoints;
+
   // Path classification
   enum class Type {
     SAFE,   // Wide, safe path
@@ -37,6 +41,28 @@ struct Path {
   Type type;
 };
 
+/**
+ * @brief Trapezoidal ROI defined by 4 vertices
+ * Order: bottom-left, top-left, top-right, bottom-right
+ */
+struct TrapezoidROI {
+  std::array<cv::Point, 4> vertices; // BL, TL, TR, BR
+  bool valid = false;                // False = no lanes detected, use fallback
+
+  /// Bounding rectangle that encloses the trapezoid
+  cv::Rect boundingRect() const {
+    if (!valid)
+      return cv::Rect();
+    std::vector<cv::Point> pts(vertices.begin(), vertices.end());
+    return cv::boundingRect(pts);
+  }
+
+  /// Get vertices as a vector (convenient for OpenCV polygon ops)
+  std::vector<cv::Point> asVector() const {
+    return std::vector<cv::Point>(vertices.begin(), vertices.end());
+  }
+};
+
 // Detection Configuration
 struct DetectionConfig {
   float confidenceThreshold = 0.5f; // Minimum confidence for detections
@@ -44,7 +70,7 @@ struct DetectionConfig {
   int inputWidth = 256;  // YOLO input width (reduced for performance)
   int inputHeight = 256; // YOLO input height (reduced for performance)
   int frameSkip =
-      5; // Process every Nth frame (1 = all frames, 5 = every 5th frame)
+      2; // Process every Nth frame (1 = all frames, 5 = every 5th frame)
   bool usingCuda = false;
   int batchSize =
       4; // Number of frames to process in a batch (for CUDA optimization)
@@ -71,8 +97,73 @@ struct PathConfig {
   int gridResolution = 50;       // Grid cells for path planning
   float maxPathDistance = 50.0f; // Maximum path distance in meters
 
-  // Pixel to meter conversion (approximate, depends on camera)
-  float pixelsPerMeter = 20.0f; // Calibrate based on your camera
+  // Perspective model (no camera calibration needed)
+  float horizonRatio =
+      0.35f; // Vanishing point as fraction of frame height from top
+  float laneWidthAtBottom =
+      0.45f; // Lane width as fraction of frame width at bottom edge
+};
+
+// Lane Detection Configuration
+// Tuned for curb/barrier detection (structural edges, not painted lines)
+struct LaneConfig {
+  bool enabled = true; // Enable dynamic lane-based ROI
+
+  // --- Color filtering (HSV) ---
+  bool useColorFilter = false; // Disabled by default for curb/barrier detection
+  // Yellow line range
+  cv::Scalar yellowLow = cv::Scalar(15, 80, 120);
+  cv::Scalar yellowHigh = cv::Scalar(35, 255, 255);
+  // White line range
+  cv::Scalar whiteLow = cv::Scalar(0, 0, 200);
+  cv::Scalar whiteHigh = cv::Scalar(180, 30, 255);
+
+  // --- Edge detection ---
+  int gaussianKernel = 5;   // Gaussian blur kernel size (must be odd)
+  double cannyLow = 40.0;   // Canny low threshold (lower catches curb edges)
+  double cannyHigh = 120.0; // Canny high threshold
+
+  // --- Hough transform ---
+  double houghRho = 1.0; // Distance resolution in pixels
+  double houghTheta = 3.14159265358979323846 / 180.0; // ~1 degree in radians
+  int houghThreshold = 30;                            // Accumulator threshold
+  double houghMinLineLen =
+      40.0; // Min line length (lower to catch shorter curb edges)
+  double houghMaxLineGap =
+      15.0; // Max gap to bridge (higher for barrier gaps/posts)
+
+  // --- Line classification ---
+  float minSlopeThreshold = 0.3f; // Accept more angles for barriers
+  float roiTopRatio = 0.40f;      // Top of search region (fraction from top)
+  float roiBottomRatio = 0.95f;   // Bottom of search region
+  float minSolidCoverage =
+      0.35f; // Lower for barriers (gaps between guardrail posts)
+
+  // --- Temporal smoothing ---
+  float smoothingAlpha = 0.3f; // EMA alpha (0 = no update, 1 = no smoothing)
+};
+
+// Road Detection Configuration (UFLDv2 ONNX)
+struct RoadConfig {
+  std::string modelPath = "models/ufldv2_culane_res34_320x1600.onnx";
+  bool enabled = true;
+  bool useGPU = false;
+
+  // UFLDv2 CULane model parameters
+  int inputHeight = 320;
+  int inputWidth = 1600;
+  int numLanes = 4; // CULane: 4 lanes max
+  int numRows = 72; // CULane row anchors count
+  int numCols = 81; // CULane column classification bins
+  float confThreshold = 0.5f;
+
+  // CULane row anchors (y-positions in 320-px height image)
+  std::vector<int> rowAnchors = {
+      121, 131, 141, 151, 161, 171, 181, 191, 201, 211, 221, 231, 241, 251,
+      261, 271, 281, 291, 301, 311, 241, 251, 261, 271, 281, 291, 301, 311,
+      // Filled to 72 below in constructor — these are the standard CULane
+      // anchors
+  };
 };
 
 // Visualization Configuration
@@ -96,7 +187,22 @@ struct VisualConfig {
   bool showConfidence = true;
   bool showGrid = false; // Debug: show planning grid
   bool showFPS = false;
-  bool showROI = true; // Show ROI rectangle
+  bool showROI = false; // Show ROI rectangle
+
+  // --- HUD / Iron Man style settings ---
+  // Primary HUD color (cyan)
+  cv::Scalar hudColorPrimary = cv::Scalar(255, 255, 0);   // Cyan in BGR
+  cv::Scalar hudColorSecondary = cv::Scalar(255, 102, 0); // Electric blue BGR
+  cv::Scalar hudColorWarning = cv::Scalar(0, 170, 255);   // Amber BGR
+  cv::Scalar hudColorDanger = cv::Scalar(0, 0, 255);      // Red BGR
+
+  float hudGlowIntensity = 0.6f;   // Glow alpha multiplier
+  int hudChevronCount = 8;         // Number of chevron arrows on path
+  float hudAnimationSpeed = 2.0f;  // Chevron scroll speed (chevrons/sec)
+  float hudPathAlpha = 0.25f;      // Path polygon fill opacity
+  int hudScanlineSpacing = 12;     // Pixels between scanlines
+  bool hudShowDirectionArc = true; // Show directional arc at bottom
+  bool hudShowScanlines = true;    // Holographic scanline effect
 };
 
 // Video Processing Configuration
@@ -121,8 +227,8 @@ struct VideoConfig {
 
 // Model Configuration
 struct ModelConfig {
-  std::string weightsPath = "models/yolov4-tiny.weights";
-  std::string configPath = "models/yolov4-tiny.cfg";
+  std::string weightsPath = "models/yolov4.weights";
+  std::string configPath = "models/yolov4.cfg";
   std::string classNamesPath = "models/coco.names";
   bool useGPU = false; // Set to true if OpenCV built with CUDA
 };
@@ -131,6 +237,8 @@ struct ModelConfig {
 struct AppConfig {
   DetectionConfig detection;
   PathConfig path;
+  LaneConfig lane;
+  RoadConfig road;
   VisualConfig visual;
   VideoConfig video;
   ModelConfig model;
@@ -148,6 +256,9 @@ struct FrameData {
   cv::Mat frame;
   std::vector<Detection> detections;
   std::vector<Path> paths;
+  TrapezoidROI trapezoidROI;
+  cv::Mat roadMask; // Binary mask of drivable road area
+  std::vector<std::vector<cv::Point>> laneLines; // Detected lane polylines
   int frameNumber;
 };
 
