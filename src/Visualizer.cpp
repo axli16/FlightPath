@@ -162,14 +162,27 @@ void Visualizer::drawHUDPath(cv::Mat &frame, const std::vector<Path> &paths,
   polygon.insert(polygon.end(), rightEdge.rbegin(), rightEdge.rend());
 
   // --- 1. Semi-transparent filled path polygon ---
-  {
-    cv::Mat overlay = frame.clone();
-    std::vector<std::vector<cv::Point>> polys = {polygon};
+  if (!polygon.empty()) {
+    cv::Rect roi = cv::boundingRect(polygon);
+    roi &= cv::Rect(0, 0, frame.cols, frame.rows);
 
-    // Inner fill with primary color
-    cv::fillPoly(overlay, polys, color, cv::LINE_AA);
-    cv::addWeighted(overlay, config.hudPathAlpha, frame,
-                    1.0f - config.hudPathAlpha, 0, frame);
+    if (roi.width > 0 && roi.height > 0) {
+      cv::Mat overlay = frame(roi).clone();
+
+      // Offset polygon points to ROI coordinates
+      std::vector<cv::Point> roiPolygon;
+      roiPolygon.reserve(polygon.size());
+      for (const auto &pt : polygon) {
+        roiPolygon.push_back(cv::Point(pt.x - roi.x, pt.y - roi.y));
+      }
+
+      std::vector<std::vector<cv::Point>> polys = {roiPolygon};
+
+      // Inner fill with primary color
+      cv::fillPoly(overlay, polys, color, cv::LINE_AA);
+      cv::addWeighted(overlay, config.hudPathAlpha, frame(roi),
+                      1.0f - config.hudPathAlpha, 0, frame(roi));
+    }
   }
 
   // --- 2. Glow effect on edges ---
@@ -512,11 +525,17 @@ void Visualizer::drawHUDInfoPanel(cv::Mat &frame,
     return;
 
   // Semi-transparent dark panel with border
-  cv::Mat overlay = frame.clone();
-  cv::rectangle(overlay, cv::Point(panelX, panelY),
-                cv::Point(panelX + panelW, panelY + panelH),
-                cv::Scalar(10, 10, 10), cv::FILLED);
-  cv::addWeighted(overlay, 0.7, frame, 0.3, 0, frame);
+  cv::Rect panelRect(panelX, panelY, panelW, panelH);
+  panelRect &= cv::Rect(0, 0, frame.cols, frame.rows);
+
+  if (panelRect.width > 0 && panelRect.height > 0) {
+    cv::Mat panelOverlay = frame(panelRect).clone();
+    cv::rectangle(panelOverlay, cv::Point(0, 0),
+                  cv::Point(panelRect.width, panelRect.height),
+                  cv::Scalar(10, 10, 10), cv::FILLED);
+    cv::addWeighted(panelOverlay, 0.7, frame(panelRect), 0.3, 0,
+                    frame(panelRect));
+  }
 
   // HUD-style border (thin cyan lines)
   cv::rectangle(frame, cv::Point(panelX, panelY),
@@ -624,12 +643,25 @@ void Visualizer::drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
     std::vector<cv::Point> poly = trapezoidROI.asVector();
 
     // Very subtle ROI overlay in HUD style
-    cv::Mat overlay = frame.clone();
-    std::vector<std::vector<cv::Point>> polys = {poly};
-    cv::fillPoly(overlay, polys, cv::Scalar(0, 40, 0), cv::LINE_AA);
-    cv::addWeighted(overlay, 0.08, frame, 0.92, 0, frame);
+    cv::Rect roi = cv::boundingRect(poly);
+    roi &= cv::Rect(0, 0, frame.cols, frame.rows);
 
-    // Thin outline
+    if (roi.width > 0 && roi.height > 0) {
+      cv::Mat overlay = frame(roi).clone();
+
+      std::vector<cv::Point> roiPoly;
+      roiPoly.reserve(poly.size());
+      for (const auto &pt : poly) {
+        roiPoly.push_back(cv::Point(pt.x - roi.x, pt.y - roi.y));
+      }
+      std::vector<std::vector<cv::Point>> roiPolys = {roiPoly};
+
+      cv::fillPoly(overlay, roiPolys, cv::Scalar(0, 40, 0), cv::LINE_AA);
+      cv::addWeighted(overlay, 0.08, frame(roi), 0.92, 0, frame(roi));
+    }
+
+    // Thin outline (drawn on full frame to avoid edge clipping issues)
+    std::vector<std::vector<cv::Point>> polys = {poly};
     cv::polylines(frame, polys, true,
                   cv::Scalar(visualConfig.hudColorPrimary[0] * 0.2,
                              visualConfig.hudColorPrimary[1] * 0.2,
