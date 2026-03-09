@@ -163,13 +163,27 @@ void Visualizer::drawHUDPath(cv::Mat &frame, const std::vector<Path> &paths,
 
   // --- 1. Semi-transparent filled path polygon ---
   {
-    cv::Mat overlay = frame.clone();
-    std::vector<std::vector<cv::Point>> polys = {polygon};
+    // Optimization: Avoid full-frame cv::Mat::clone(). Extract ROI, clone only
+    // the region of interest, draw with offset coordinates, and blend back.
+    cv::Rect roi = cv::boundingRect(polygon);
+    roi &= cv::Rect(0, 0, frame.cols, frame.rows); // Clamp to frame bounds
+    if (roi.width > 0 && roi.height > 0) {
+      cv::Mat frameRoi = frame(roi);
+      cv::Mat overlay = frameRoi.clone();
 
-    // Inner fill with primary color
-    cv::fillPoly(overlay, polys, color, cv::LINE_AA);
-    cv::addWeighted(overlay, config.hudPathAlpha, frame,
-                    1.0f - config.hudPathAlpha, 0, frame);
+      std::vector<cv::Point> offsetPolygon;
+      offsetPolygon.reserve(polygon.size());
+      for (const auto &pt : polygon) {
+        offsetPolygon.push_back(pt - roi.tl());
+      }
+
+      std::vector<std::vector<cv::Point>> polys = {offsetPolygon};
+
+      // Inner fill with primary color
+      cv::fillPoly(overlay, polys, color, cv::LINE_AA);
+      cv::addWeighted(overlay, config.hudPathAlpha, frameRoi,
+                      1.0f - config.hudPathAlpha, 0, frameRoi);
+    }
   }
 
   // --- 2. Glow effect on edges ---
@@ -512,11 +526,20 @@ void Visualizer::drawHUDInfoPanel(cv::Mat &frame,
     return;
 
   // Semi-transparent dark panel with border
-  cv::Mat overlay = frame.clone();
-  cv::rectangle(overlay, cv::Point(panelX, panelY),
-                cv::Point(panelX + panelW, panelY + panelH),
-                cv::Scalar(10, 10, 10), cv::FILLED);
-  cv::addWeighted(overlay, 0.7, frame, 0.3, 0, frame);
+  // Optimization: Avoid full-frame cv::Mat::clone(). Extract ROI, clone only
+  // the region of interest, draw with offset coordinates, and blend back.
+  cv::Rect roi(panelX, panelY, panelW, panelH);
+  roi &= cv::Rect(0, 0, frame.cols, frame.rows); // Clamp to frame bounds
+
+  if (roi.width > 0 && roi.height > 0) {
+    cv::Mat frameRoi = frame(roi);
+    cv::Mat overlay = frameRoi.clone();
+    cv::rectangle(
+        overlay, cv::Point(panelX - roi.x, panelY - roi.y),
+        cv::Point((panelX + panelW) - roi.x, (panelY + panelH) - roi.y),
+        cv::Scalar(10, 10, 10), cv::FILLED);
+    cv::addWeighted(overlay, 0.7, frameRoi, 0.3, 0, frameRoi);
+  }
 
   // HUD-style border (thin cyan lines)
   cv::rectangle(frame, cv::Point(panelX, panelY),
@@ -624,13 +647,29 @@ void Visualizer::drawROI(cv::Mat &frame, const DetectionConfig &detectionConfig,
     std::vector<cv::Point> poly = trapezoidROI.asVector();
 
     // Very subtle ROI overlay in HUD style
-    cv::Mat overlay = frame.clone();
-    std::vector<std::vector<cv::Point>> polys = {poly};
-    cv::fillPoly(overlay, polys, cv::Scalar(0, 40, 0), cv::LINE_AA);
-    cv::addWeighted(overlay, 0.08, frame, 0.92, 0, frame);
+    // Optimization: Avoid full-frame cv::Mat::clone(). Extract ROI, clone only
+    // the region of interest, draw with offset coordinates, and blend back.
+    cv::Rect roi = cv::boundingRect(poly);
+    roi &= cv::Rect(0, 0, frame.cols, frame.rows); // Clamp to frame bounds
+
+    std::vector<std::vector<cv::Point>> originalPolys = {poly};
+    if (roi.width > 0 && roi.height > 0) {
+      cv::Mat frameRoi = frame(roi);
+      cv::Mat overlay = frameRoi.clone();
+
+      std::vector<cv::Point> offsetPoly;
+      offsetPoly.reserve(poly.size());
+      for (const auto &pt : poly) {
+        offsetPoly.push_back(pt - roi.tl());
+      }
+      std::vector<std::vector<cv::Point>> polys = {offsetPoly};
+
+      cv::fillPoly(overlay, polys, cv::Scalar(0, 40, 0), cv::LINE_AA);
+      cv::addWeighted(overlay, 0.08, frameRoi, 0.92, 0, frameRoi);
+    }
 
     // Thin outline
-    cv::polylines(frame, polys, true,
+    cv::polylines(frame, originalPolys, true,
                   cv::Scalar(visualConfig.hudColorPrimary[0] * 0.2,
                              visualConfig.hudColorPrimary[1] * 0.2,
                              visualConfig.hudColorPrimary[2] * 0.2),
