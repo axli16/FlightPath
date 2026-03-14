@@ -13,3 +13,7 @@
 ## 2024-05-27 - [Draw Thread Synchronization & Buffer Reordering Deadlock]
 **Learning:** In the multi-threaded pipeline, using a busy-wait spin loop (`while(true) { if (!queue.try_pop()) continue; }`) on the consumer (draw) thread consumes 100% of a CPU core, starving producer threads (like YOLO detection). Replacing it with a blocking `pop()` is essential. However, when blocking, the buffer reordering logic MUST process all sequential frames in a loop (`while (buffer.count(nextExpectedFrameNumber))`). A simple `if` condition would process only one frame per `pop()`, deadlocking the thread if frames arrived out-of-order and multiple sequential frames were waiting in the buffer.
 **Action:** Always pair blocking queue operations with exhaustive processing of reordering buffers (`while` instead of `if`) to prevent deadlocks and ensure continuous stream processing.
+
+## 2024-03-22 - [Optimized OpenCV Blending & Zero-Copy Queuing]
+**Learning:** Copying and blending full-resolution `cv::Mat` frames for drawing small HUD overlays severely bottlenecks rendering threads due to memory allocation and blending bandwidth overhead.
+**Action:** Always compute a bounding `cv::Rect` for the drawn element, clone only that ROI (`frame(roi).clone()`), apply drawing operations relative to the ROI bounds, and blend back locally. Additionally, if the producer loop creates fresh `cv::Mat` instances, rely on OpenCV's reference counting to avoid explicit `.clone()` calls when moving frames through processing queues.
