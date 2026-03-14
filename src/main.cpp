@@ -175,11 +175,12 @@ void processFrame(AppConfig &config,
     }
 
     // Push frame with detections (either fresh or cached)
-    postProcessQueue.push(
-        FrameData{localFrame.frame.clone(), cachedDetections, cachedPaths,
-                  cachedTrapezoid,
-                  cachedRoadMask.empty() ? cv::Mat() : cachedRoadMask.clone(),
-                  cachedLaneLines, localFrame.frameNumber});
+    // Optimization: avoid redundant .clone(). localFrame is populated from
+    // queue and holds a unique cv::Mat allocated in readFrameThread.
+    postProcessQueue.push(FrameData{
+        localFrame.frame, cachedDetections, cachedPaths, cachedTrapezoid,
+        cachedRoadMask.empty() ? cv::Mat() : cachedRoadMask.clone(),
+        cachedLaneLines, localFrame.frameNumber});
   }
 }
 
@@ -269,7 +270,8 @@ int main(int argc, char *argv[]) {
 
     while (numFrames < totalFrames) {
       // Auto-crop if enabled and frame is too large
-      cv::Mat frame; // Moved to inner scope to ensure fresh allocation per frame
+      cv::Mat
+          frame; // Moved to inner scope to ensure fresh allocation per frame
 
       while (frameQueue.size() > 1000) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -284,8 +286,8 @@ int main(int argc, char *argv[]) {
             cropMessageShown = true;
           }
 
-          // Optimization: Avoid redundant clone. croppedFrame is a fresh sub-matrix or frame,
-          // and frame is local to this loop iteration.
+          // Optimization: Avoid redundant clone. croppedFrame is a fresh
+          // sub-matrix or frame, and frame is local to this loop iteration.
           frameQueue.push(preProcessFrameData{croppedFrame, numFrames});
         } else if (config.video.autoScale) {
           cv::resize(
@@ -293,7 +295,8 @@ int main(int argc, char *argv[]) {
               cv::Size(config.video.targetWidth, config.video.targetHeight));
           frameQueue.push(preProcessFrameData{frame, numFrames});
         } else {
-          // Optimization: Avoid redundant clone. frame is local and unique to this iteration.
+          // Optimization: Avoid redundant clone. frame is local and unique to
+          // this iteration.
           frameQueue.push(preProcessFrameData{frame, numFrames});
         }
         numFrames++;
@@ -351,8 +354,8 @@ int main(int argc, char *argv[]) {
       // (which contains large vectors like std::vector<Detection>).
       buffer[frameData.frameNumber] = std::move(frameData);
 
-      // Optimization: Process all available sequential frames from the reordering
-      // buffer to prevent deadlocks when frames arrive out of order.
+      // Optimization: Process all available sequential frames from the
+      // reordering buffer to prevent deadlocks when frames arrive out of order.
       while (buffer.count(nextExpectedFrameNumber)) {
         auto frame_start = std::chrono::high_resolution_clock::now();
         // Optimization: Move out of buffer to avoid deep copy before erasure
