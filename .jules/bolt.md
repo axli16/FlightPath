@@ -17,3 +17,7 @@
 ## 2024-03-22 - [Optimized OpenCV Blending & Zero-Copy Queuing]
 **Learning:** Copying and blending full-resolution `cv::Mat` frames for drawing small HUD overlays severely bottlenecks rendering threads due to memory allocation and blending bandwidth overhead.
 **Action:** Always compute a bounding `cv::Rect` for the drawn element, clone only that ROI (`frame(roi).clone()`), apply drawing operations relative to the ROI bounds, and blend back locally. Additionally, if the producer loop creates fresh `cv::Mat` instances, rely on OpenCV's reference counting to avoid explicit `.clone()` calls when moving frames through processing queues.
+
+## 2024-05-28 - [Full-Frame Mask Allocation Overhead & Pixel Iteration]
+**Learning:** Creating a full-frame `cv::Mat::zeros(frame.size(), CV_8UC1)` (e.g. 1920x1080) for masking a small localized polygon introduces massive allocation overhead and cache misses, especially inside a per-frame draw loop. Furthermore, using `.at<uchar>` inside tight loops is incredibly slow due to debug boundary checks and method call overhead.
+**Action:** Always calculate the bounding rectangle `cv::boundingRect` of the polygon first and allocate the mask *only* for the `bounds.size()`. Shift the polygon to be relative to the bounding box. Additionally, use `.ptr<uchar>(y)` for row-wise raw pointer access rather than `.at<uchar>` for order-of-magnitude faster pixel traversal.
