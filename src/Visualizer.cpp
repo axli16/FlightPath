@@ -387,14 +387,26 @@ void Visualizer::drawScanlines(cv::Mat &frame,
   if (polygon.size() < 3)
     return;
 
-  // Create a mask for the path polygon
-  cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-  std::vector<std::vector<cv::Point>> polys = {polygon};
-  cv::fillPoly(mask, polys, cv::Scalar(255));
-
   // Get bounding rect to limit scan area
   cv::Rect bounds = cv::boundingRect(polygon);
   bounds &= cv::Rect(0, 0, frame.cols, frame.rows);
+
+  if (bounds.area() <= 0)
+    return;
+
+  // Optimization: Create a mask ONLY for the bounding rect (ROI) instead of
+  // full frame. This avoids a massive 1080p allocation and fillPoly overhead
+  // every frame.
+  cv::Mat mask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+
+  // Shift polygon points to bounds-relative coordinates
+  std::vector<cv::Point> shiftedPoly;
+  shiftedPoly.reserve(polygon.size());
+  for (const auto &pt : polygon) {
+    shiftedPoly.push_back(cv::Point(pt.x - bounds.x, pt.y - bounds.y));
+  }
+  std::vector<std::vector<cv::Point>> polys = {shiftedPoly};
+  cv::fillPoly(mask, polys, cv::Scalar(255));
 
   // Animation: scanlines scroll upward
   int scrollOffset = (frameCounter_ * 2) % config.hudScanlineSpacing;
@@ -408,10 +420,16 @@ void Visualizer::drawScanlines(cv::Mat &frame,
 
     // Find the left and right bounds of the polygon at this y
     int xMin = frame.cols, xMax = 0;
-    for (int x = bounds.x; x < bounds.x + bounds.width && x < frame.cols; ++x) {
-      if (mask.at<uchar>(y, x) > 0) {
-        xMin = std::min(xMin, x);
-        xMax = std::max(xMax, x);
+
+    // Optimization: Use raw pointer for fast row access instead of slow
+    // .at<uchar>
+    int maskY = y - bounds.y;
+    const uchar *maskRow = mask.ptr<uchar>(maskY);
+
+    for (int x = 0; x < bounds.width; ++x) {
+      if (maskRow[x] > 0) {
+        xMin = std::min(xMin, bounds.x + x);
+        xMax = std::max(xMax, bounds.x + x);
       }
     }
 
