@@ -17,3 +17,7 @@
 ## 2024-03-22 - [Optimized OpenCV Blending & Zero-Copy Queuing]
 **Learning:** Copying and blending full-resolution `cv::Mat` frames for drawing small HUD overlays severely bottlenecks rendering threads due to memory allocation and blending bandwidth overhead.
 **Action:** Always compute a bounding `cv::Rect` for the drawn element, clone only that ROI (`frame(roi).clone()`), apply drawing operations relative to the ROI bounds, and blend back locally. Additionally, if the producer loop creates fresh `cv::Mat` instances, rely on OpenCV's reference counting to avoid explicit `.clone()` calls when moving frames through processing queues.
+
+## 2024-05-28 - [Visualizer Scanline Mask Optimization]
+**Learning:** `cv::Mat::zeros` creates a new mask that matches the dimensions specified. When creating a mask for a small region of the frame (like a bounding box around a polygon), passing `frame.size()` instead of `bounds.size()` causes unnecessary memory allocation overhead and slows down `cv::fillPoly`.
+**Action:** When drawing masks, ensure `cv::Mat` instances are only initialized with the dimensions they require (`bounds.size()`), then offset drawing coordinates to be relative to the bounding box.
