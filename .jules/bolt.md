@@ -17,3 +17,7 @@
 ## 2024-03-22 - [Optimized OpenCV Blending & Zero-Copy Queuing]
 **Learning:** Copying and blending full-resolution `cv::Mat` frames for drawing small HUD overlays severely bottlenecks rendering threads due to memory allocation and blending bandwidth overhead.
 **Action:** Always compute a bounding `cv::Rect` for the drawn element, clone only that ROI (`frame(roi).clone()`), apply drawing operations relative to the ROI bounds, and blend back locally. Additionally, if the producer loop creates fresh `cv::Mat` instances, rely on OpenCV's reference counting to avoid explicit `.clone()` calls when moving frames through processing queues.
+
+## 2024-05-28 - [UFLDv2 Lane Decoding Optimization]
+**Learning:** In the UFLDv2 output decoding loop (`RoadDetector::decodeOutputs`), the classification array for each lane row anchor is traversed to find the maximum value (`maxVal`), and immediately traversed again using `std::max_element` to compute the expected softmax value.
+**Action:** When computing softmax values over a small tensor or vector, reuse the already computed `maxVal` from the preceding loop instead of redundant passes like `std::max_element`.
