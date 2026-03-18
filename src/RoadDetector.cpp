@@ -167,7 +167,9 @@ RoadDetector::decodeOutputs(const std::vector<cv::Mat> &outputs, int origWidth,
 
       // Compute softmax expectation for the position
       // This is more precise than raw argmax
-      float maxScore = *std::max_element(binScores.begin(), binScores.end());
+      // Optimization: Avoid redundant O(N) std::max_element pass over binScores
+      // since maxVal is already computed in the preceding loop.
+      float maxScore = maxVal;
       for (int b = 0; b < numBins; ++b) {
         float expVal = std::exp(binScores[b] - maxScore);
         sumExp += expVal;
