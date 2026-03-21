@@ -387,14 +387,23 @@ void Visualizer::drawScanlines(cv::Mat &frame,
   if (polygon.size() < 3)
     return;
 
-  // Create a mask for the path polygon
-  cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-  std::vector<std::vector<cv::Point>> polys = {polygon};
-  cv::fillPoly(mask, polys, cv::Scalar(255));
-
   // Get bounding rect to limit scan area
   cv::Rect bounds = cv::boundingRect(polygon);
   bounds &= cv::Rect(0, 0, frame.cols, frame.rows);
+
+  if (bounds.area() <= 0)
+    return;
+
+  // Optimization: Allocate mask only for the bounding box size
+  // rather than the full frame, and shift polygon coordinates to
+  // eliminate massive per-frame memory allocation overhead.
+  cv::Mat mask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+  std::vector<cv::Point> shiftedPolygon;
+  for (const auto &pt : polygon) {
+    shiftedPolygon.push_back(cv::Point(pt.x - bounds.x, pt.y - bounds.y));
+  }
+  std::vector<std::vector<cv::Point>> polys = {shiftedPolygon};
+  cv::fillPoly(mask, polys, cv::Scalar(255));
 
   // Animation: scanlines scroll upward
   int scrollOffset = (frameCounter_ * 2) % config.hudScanlineSpacing;
@@ -406,12 +415,19 @@ void Visualizer::drawScanlines(cv::Mat &frame,
     if (y < 0 || y >= frame.rows)
       continue;
 
+    // Relative Y coordinate for the mask
+    int relY = y - bounds.y;
+
+    if (relY < 0 || relY >= bounds.height)
+      continue;
+
     // Find the left and right bounds of the polygon at this y
-    int xMin = frame.cols, xMax = 0;
-    for (int x = bounds.x; x < bounds.x + bounds.width && x < frame.cols; ++x) {
-      if (mask.at<uchar>(y, x) > 0) {
-        xMin = std::min(xMin, x);
-        xMax = std::max(xMax, x);
+    int xMin = bounds.width,
+        xMax = 0; // Relative coordinates for finding max/min
+    for (int relX = 0; relX < bounds.width; ++relX) {
+      if (mask.at<uchar>(relY, relX) > 0) {
+        xMin = std::min(xMin, relX);
+        xMax = std::max(xMax, relX);
       }
     }
 
@@ -423,8 +439,9 @@ void Visualizer::drawScanlines(cv::Mat &frame,
 
       cv::Scalar lineColor(scanColor[0] * alpha, scanColor[1] * alpha,
                            scanColor[2] * alpha);
-      cv::line(frame, cv::Point(xMin, y), cv::Point(xMax, y), lineColor, 1,
-               cv::LINE_AA);
+      // Convert relative coordinates back to absolute coordinates for drawing
+      cv::line(frame, cv::Point(bounds.x + xMin, y),
+               cv::Point(bounds.x + xMax, y), lineColor, 1, cv::LINE_AA);
     }
   }
 }
