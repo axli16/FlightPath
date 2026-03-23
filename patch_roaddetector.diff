@@ -1,0 +1,11 @@
+--- src/RoadDetector.cpp
++++ src/RoadDetector.cpp
+@@ -166,7 +166,7 @@
+
+       // Compute softmax expectation for the position
+       // This is more precise than raw argmax
+-      float maxScore = *std::max_element(binScores.begin(), binScores.end());
++      float maxScore = maxVal; // Optimization: maxVal was already computed in the loop above
+       for (int b = 0; b < numBins; ++b) {
+         float expVal = std::exp(binScores[b] - maxScore);
+         sumExp += expVal;
