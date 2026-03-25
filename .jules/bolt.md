@@ -17,3 +17,7 @@
 ## 2024-03-22 - [Optimized OpenCV Blending & Zero-Copy Queuing]
 **Learning:** Copying and blending full-resolution `cv::Mat` frames for drawing small HUD overlays severely bottlenecks rendering threads due to memory allocation and blending bandwidth overhead.
 **Action:** Always compute a bounding `cv::Rect` for the drawn element, clone only that ROI (`frame(roi).clone()`), apply drawing operations relative to the ROI bounds, and blend back locally. Additionally, if the producer loop creates fresh `cv::Mat` instances, rely on OpenCV's reference counting to avoid explicit `.clone()` calls when moving frames through processing queues.
+
+## 2024-11-20 - [Replace O(N^2) pixel iteration with cv::Mat::setTo]
+**Learning:** In C++ OpenCV code, nested loops checking conditions pixel-by-pixel (e.g., `if (mask.at<uchar>(y, x) == 0) grid.at<uchar>(y, x) = 255;`) are extremely slow because they bypass vectorization.
+**Action:** Replace these loops with OpenCV's built-in vectorized operations like `cv::Mat::setTo` (e.g., `grid.setTo(255, mask == 0)`), which use SIMD instructions under the hood for massive performance gains in hot loops.
