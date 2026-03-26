@@ -387,14 +387,24 @@ void Visualizer::drawScanlines(cv::Mat &frame,
   if (polygon.size() < 3)
     return;
 
-  // Create a mask for the path polygon
-  cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-  std::vector<std::vector<cv::Point>> polys = {polygon};
-  cv::fillPoly(mask, polys, cv::Scalar(255));
-
   // Get bounding rect to limit scan area
   cv::Rect bounds = cv::boundingRect(polygon);
   bounds &= cv::Rect(0, 0, frame.cols, frame.rows);
+
+  if (bounds.area() <= 0)
+    return;
+
+  // Optimization: Allocate mask only for the polygon's bounding rectangle
+  // rather than the full frame size to eliminate massive per-frame allocations.
+  cv::Mat mask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+
+  // Shift polygon coordinates to be bounds-relative
+  std::vector<cv::Point> shiftedPolygon;
+  for (const auto &pt : polygon) {
+    shiftedPolygon.push_back(cv::Point(pt.x - bounds.x, pt.y - bounds.y));
+  }
+  std::vector<std::vector<cv::Point>> polys = {shiftedPolygon};
+  cv::fillPoly(mask, polys, cv::Scalar(255));
 
   // Animation: scanlines scroll upward
   int scrollOffset = (frameCounter_ * 2) % config.hudScanlineSpacing;
@@ -406,12 +416,25 @@ void Visualizer::drawScanlines(cv::Mat &frame,
     if (y < 0 || y >= frame.rows)
       continue;
 
+    // Translate global y to mask-relative y
+    int relY = y - bounds.y;
+    // Explicit bounds check to prevent out-of-bounds segfaults
+    if (relY < 0 || relY >= bounds.height)
+      continue;
+
     // Find the left and right bounds of the polygon at this y
     int xMin = frame.cols, xMax = 0;
-    for (int x = bounds.x; x < bounds.x + bounds.width && x < frame.cols; ++x) {
-      if (mask.at<uchar>(y, x) > 0) {
-        xMin = std::min(xMin, x);
-        xMax = std::max(xMax, x);
+
+    // Use raw pointer access for hot inner loop instead of .at()
+    const uchar *rowPtr = mask.ptr<uchar>(relY);
+
+    for (int relX = 0; relX < bounds.width; ++relX) {
+      if (rowPtr[relX] > 0) {
+        int x = bounds.x + relX;
+        if (x < frame.cols) {
+          xMin = std::min(xMin, x);
+          xMax = std::max(xMax, x);
+        }
       }
     }
 
