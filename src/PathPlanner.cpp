@@ -110,11 +110,10 @@ PathPlanner::createOccupancyGrid(const std::vector<Detection> &detections,
     gridRight = std::min(gridSize - 1, gridRight + expand);
     gridBottom = std::min(gridSize - 1, gridBottom + expand);
 
-    for (int y = gridTop; y <= gridBottom; ++y) {
-      for (int x = gridLeft; x <= gridRight; ++x) {
-        grid.at<uchar>(y, x) = 255;
-      }
-    }
+    // Optimization: Use vectorized OpenCV function instead of nested loops
+    cv::rectangle(grid, cv::Point(gridLeft, gridTop),
+                  cv::Point(gridRight, gridBottom), cv::Scalar(255),
+                  cv::FILLED);
   }
 
   return grid;
@@ -150,14 +149,9 @@ void PathPlanner::maskOccupancyGrid(cv::Mat &grid, const cv::Rect &roi,
   std::vector<std::vector<cv::Point>> polys = {gridPoly};
   cv::fillPoly(mask, polys, cv::Scalar(255));
 
+  // Optimization: Replace O(N^2) loop with vectorized mask operation
   // Mark everything OUTSIDE the trapezoid as occupied (255) in the grid
-  for (int y = 0; y < gridSize; ++y) {
-    for (int x = 0; x < gridSize; ++x) {
-      if (mask.at<uchar>(y, x) == 0) {
-        grid.at<uchar>(y, x) = 255; // occupied = obstacle
-      }
-    }
-  }
+  grid.setTo(255, mask == 0);
 }
 
 std::vector<Path> PathPlanner::findGaps(const cv::Mat &occupancyGrid,
@@ -537,11 +531,10 @@ cv::Mat PathPlanner::createOccupancyGridWithRoad(
     gridRight = std::min(gridSize - 1, gridRight + expand);
     gridBottom = std::min(gridSize - 1, gridBottom + expand);
 
-    for (int y = gridTop; y <= gridBottom; ++y) {
-      for (int x = gridLeft; x <= gridRight; ++x) {
-        grid.at<uchar>(y, x) = 255;
-      }
-    }
+    // Optimization: Use vectorized OpenCV function instead of nested loops
+    cv::rectangle(grid, cv::Point(gridLeft, gridTop),
+                  cv::Point(gridRight, gridBottom), cv::Scalar(255),
+                  cv::FILLED);
   }
 
   return grid;
