@@ -110,11 +110,9 @@ PathPlanner::createOccupancyGrid(const std::vector<Detection> &detections,
     gridRight = std::min(gridSize - 1, gridRight + expand);
     gridBottom = std::min(gridSize - 1, gridBottom + expand);
 
-    for (int y = gridTop; y <= gridBottom; ++y) {
-      for (int x = gridLeft; x <= gridRight; ++x) {
-        grid.at<uchar>(y, x) = 255;
-      }
-    }
+    // Vectorized assignment replacing O(N^2) loops
+    cv::rectangle(grid, cv::Point(gridLeft, gridTop), cv::Point(gridRight, gridBottom),
+                  cv::Scalar(255), cv::FILLED);
   }
 
   return grid;
@@ -151,13 +149,8 @@ void PathPlanner::maskOccupancyGrid(cv::Mat &grid, const cv::Rect &roi,
   cv::fillPoly(mask, polys, cv::Scalar(255));
 
   // Mark everything OUTSIDE the trapezoid as occupied (255) in the grid
-  for (int y = 0; y < gridSize; ++y) {
-    for (int x = 0; x < gridSize; ++x) {
-      if (mask.at<uchar>(y, x) == 0) {
-        grid.at<uchar>(y, x) = 255; // occupied = obstacle
-      }
-    }
-  }
+  // Vectorized assignment replacing O(N^2) conditional loops
+  grid.setTo(255, mask == 0);
 }
 
 std::vector<Path> PathPlanner::findGaps(const cv::Mat &occupancyGrid,
@@ -492,22 +485,42 @@ cv::Mat PathPlanner::createOccupancyGridWithRoad(
 
   // Step 1: Mark non-road cells as occupied (if road mask available)
   if (!roadMask.empty()) {
-    for (int gy = 0; gy < gridSize; ++gy) {
-      for (int gx = 0; gx < gridSize; ++gx) {
-        // Map grid cell center to frame coordinates
-        int frameX = roi.x + static_cast<int>((gx + 0.5f) * cellWidth);
-        int frameY = roi.y + static_cast<int>((gy + 0.5f) * cellHeight);
+    // Optimization: Use cv::warpAffine with BORDER_REPLICATE to correctly handle
+    // coordinate scaling, translation, and out-of-bounds clamping, replacing the O(N^2) loop.
+    // The transformation maps grid coordinates (0 to gridSize) to roadMask coordinates.
+    // We want the inverse: mapping roadMask ROI to the grid.
 
-        // Clamp to mask bounds
-        frameX = std::max(0, std::min(roadMask.cols - 1, frameX));
-        frameY = std::max(0, std::min(roadMask.rows - 1, frameY));
+    // 1. Define the source points (corners of the ROI in the roadMask)
+    // We use cell centers (+0.5f) to match the original projection logic.
+    float startX = roi.x + 0.5f * cellWidth;
+    float startY = roi.y + 0.5f * cellHeight;
+    float endX = roi.x + (gridSize - 0.5f) * cellWidth;
+    float endY = roi.y + (gridSize - 0.5f) * cellHeight;
 
-        // If not road → occupied
-        if (roadMask.at<uchar>(frameY, frameX) == 0) {
-          grid.at<uchar>(gy, gx) = 255;
-        }
-      }
-    }
+    cv::Point2f srcTri[3];
+    srcTri[0] = cv::Point2f(startX, startY);
+    srcTri[1] = cv::Point2f(endX, startY);
+    srcTri[2] = cv::Point2f(startX, endY);
+
+    // 2. Define the destination points (corners of the grid)
+    // Use integer bounds so that destination pixel 0 maps correctly to the source cell center.
+    cv::Point2f dstTri[3];
+    dstTri[0] = cv::Point2f(0.0f, 0.0f);
+    dstTri[1] = cv::Point2f(gridSize - 1.0f, 0.0f);
+    dstTri[2] = cv::Point2f(0.0f, gridSize - 1.0f);
+
+    // 3. Get the affine transformation matrix
+    cv::Mat warp_mat = cv::getAffineTransform(srcTri, dstTri);
+
+    // 4. Apply the transformation with BORDER_REPLICATE to handle out-of-bounds ROI clamping.
+    // Note: cv::warpAffine uses cvRound internally, introducing a minor 1-pixel sampling
+    // difference compared to the original static_cast<int> truncation, but eliminates the O(N^2) loop.
+    cv::Mat warpedMask;
+    cv::warpAffine(roadMask, warpedMask, warp_mat, cv::Size(gridSize, gridSize),
+                   cv::INTER_NEAREST, cv::BORDER_REPLICATE);
+
+    // 5. Apply the mask to the grid (occupied where roadMask is 0)
+    grid.setTo(255, warpedMask == 0);
   }
 
   // Step 2: Mark vehicle detections as occupied (same logic as before)
@@ -537,11 +550,9 @@ cv::Mat PathPlanner::createOccupancyGridWithRoad(
     gridRight = std::min(gridSize - 1, gridRight + expand);
     gridBottom = std::min(gridSize - 1, gridBottom + expand);
 
-    for (int y = gridTop; y <= gridBottom; ++y) {
-      for (int x = gridLeft; x <= gridRight; ++x) {
-        grid.at<uchar>(y, x) = 255;
-      }
-    }
+    // Vectorized assignment replacing O(N^2) loops
+    cv::rectangle(grid, cv::Point(gridLeft, gridTop), cv::Point(gridRight, gridBottom),
+                  cv::Scalar(255), cv::FILLED);
   }
 
   return grid;
