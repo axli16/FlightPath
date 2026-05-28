@@ -100,7 +100,11 @@ void VideoProcessor::release() {
     writerInitialized_ = false;
   }
 
-  cv::destroyAllWindows();
+  try {
+    cv::destroyAllWindows();
+  } catch (...) {
+    // Ignore highgui/window function not implemented errors in headless environments
+  }
 }
 
 cv::Mat VideoProcessor::cropToCenter(const cv::Mat &frame, int maxWidth,

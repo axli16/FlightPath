@@ -149,6 +149,44 @@ python3 -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"
 # Should print 1 or more
 ```
 
+### CUDA not found in PATH during setup check
+If the setup script shows a `[!] CUDA not found in PATH` warning, the shell doesn't know where `nvcc` or the CUDA libraries are located. Run the following commands to add them to your environment permanently:
+```bash
+echo 'export PATH=$PATH:/usr/local/cuda/bin' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### `Failed to initialize NVML: Driver/library version mismatch`
+This happens when your package manager installs an updated NVIDIA driver in the background, making the active kernel module version differ from the user-space libraries. 
+- **Solution A (Recommended)**: Simply reboot the server to load the new kernel module:
+  ```bash
+  sudo reboot
+  ```
+- **Solution B (Without Rebooting)**: If you cannot reboot, unload and reload the kernel modules:
+  ```bash
+  # Stop any processes using the GPU (docker, python, etc.)
+  sudo rmmod nvidia_uvm
+  sudo rmmod nvidia_modeset
+  sudo rmmod nvidia
+  # Verify mismatch is resolved
+  nvidia-smi
+  ```
+
+### `cannot execute binary file`
+This error occurs if you try to execute the compiled C++ executable with the `bash` command prefix (e.g., `bash ./build/bin/FlightPath`). `FlightPath` is a compiled machine-code binary (ELF executable), not a plain-text shell script. 
+- **Solution**: Run the executable directly without the `bash` prefix:
+  ```bash
+  ./build/bin/FlightPath data/dashcam.mp4 --cuda --no-display --output result.mp4
+  ```
+
+### `OpenCV: The function is not implemented (cvDestroyAllWindows)`
+This happens on Linux servers where OpenCV was built from source without highgui windowing GUI support (like GTK+ or Cocoa). Calling `cv::destroyAllWindows()` directly in that environment crashes the application.
+- **Solution**: I have wrapped the call in a `try-catch` block inside `src/VideoProcessor.cpp`. Rebuild the program on your server by running:
+  ```bash
+  bash scripts/build.sh
+  ```
+
 ### Low performance / slow inference
 - Make sure `--cuda` is passed
 - Check `nvidia-smi` shows GPU utilization > 0% during processing
