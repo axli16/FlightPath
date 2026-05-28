@@ -7,6 +7,7 @@
 #include "Visualizer.h"
 #include "utility/DroppingSafeQueue.h"
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -43,7 +44,9 @@ void printUsage(const char *programName) {
                "(default: 0.5)\n";
   std::cout << "  --gpu               Use GPU acceleration (requires "
                "CUDA-enabled OpenCV)\n";
-  std::cout << "\nControls:\n";
+  std::cout << "  --no-display        Disable the preview window (required "
+               "for headless/SSH runs)\n";
+  std::cout << "\nControls (when window is shown):\n";
   std::cout << "  SPACE  - Pause/Resume\n";
   std::cout << "  ESC    - Exit\n";
   std::cout << "  S      - Save current frame\n";
@@ -51,6 +54,9 @@ void printUsage(const char *programName) {
   std::cout << "  " << programName << " data/dashcam.mp4 --cuda\n";
   std::cout << "  " << programName
             << " data/dashcam.mp4 --cuda --frameskip 3 --input-size 224\n";
+  std::cout << "  " << programName
+            << " data/dashcam.mp4 --cuda --no-display --output result.mp4\n";
+  std::cout << "    (headless/SSH: no window, saves annotated video to file)\n";
 }
 
 bool parseArguments(int argc, char *argv[], AppConfig &config) {
@@ -93,6 +99,8 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
       config.road.modelPath = argv[++i];
     } else if (arg == "--no-road") {
       config.road.enabled = false;
+    } else if (arg == "--no-display") {
+      config.video.displayWindow = false;
     } else if (arg == "--help" || arg == "-h") {
       return false;
     }
@@ -194,6 +202,36 @@ int main(int argc, char *argv[]) {
   if (!parseArguments(argc, argv, config)) {
     printUsage(argv[0]);
     return 1;
+  }
+
+  // -----------------------------------------------------------------------
+  // Headless / SSH detection
+  // On Linux, if $DISPLAY is not set there is no X server available and
+  // cv::imshow() would crash. Auto-disable the preview window in that case.
+  // -----------------------------------------------------------------------
+#ifndef _WIN32
+  {
+    const char *display = std::getenv("DISPLAY");
+    if (display == nullptr || display[0] == '\0') {
+      if (config.video.displayWindow) {
+        std::cout << "[INFO] No DISPLAY environment variable found. "
+                     "Disabling preview window (headless/SSH mode).\n"
+                  << "       Use --output <path> to save the annotated video."
+                  << std::endl;
+        config.video.displayWindow = false;
+      }
+    }
+  }
+#endif
+
+  // Warn the user if no output will be produced at all
+  if (!config.video.displayWindow && !config.video.saveOutput) {
+    std::cerr << "[WARNING] No output mode selected: window is disabled and "
+                 "no --output path was given.\n"
+              << "          The video will be processed but nothing will be "
+                 "saved or shown.\n"
+              << "          Consider adding: --output result.mp4"
+              << std::endl;
   }
 
   // Initialize components

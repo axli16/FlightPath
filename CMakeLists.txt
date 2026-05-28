@@ -10,6 +10,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
+# Find pthreads — required by std::thread on Linux
+find_package(Threads REQUIRED)
+
 # Source files
 set(SOURCES
     src/main.cpp
@@ -36,8 +39,8 @@ set(HEADERS
 # Create executable
 add_executable(FlightPath ${SOURCES} ${HEADERS})
 
-# Link OpenCV libraries
-target_link_libraries(FlightPath ${OpenCV_LIBS})
+# Link OpenCV libraries and pthreads
+target_link_libraries(FlightPath ${OpenCV_LIBS} Threads::Threads)
 
 # Set output directory
 set_target_properties(FlightPath PROPERTIES
