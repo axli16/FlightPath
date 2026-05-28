@@ -10,7 +10,7 @@ VideoProcessor::VideoProcessor()
 VideoProcessor::~VideoProcessor() { release(); }
 
 bool VideoProcessor::open(const std::string &videoPath, int &totalFrames) {
-  capture_.open(videoPath, cv::CAP_FFMPEG);
+  capture_.open(videoPath);
 
   if (!capture_.isOpened()) {
     std::cerr << "Error: Could not open video file: " << videoPath << std::endl;
