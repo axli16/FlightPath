@@ -47,9 +47,29 @@ bool ObjectDetector::loadModel(const ModelConfig &config) {
 
     // Set backend and target
     if (config.useGPU) {
-      std::cout << "Using CUDA backend" << std::endl;
-      network_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-      network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+      bool cudaSupported = false;
+      try {
+        auto backends = cv::dnn::getAvailableBackends();
+        for (const auto &pair : backends) {
+          if (pair.first == cv::dnn::DNN_BACKEND_CUDA &&
+              (pair.second == cv::dnn::DNN_TARGET_CUDA || pair.second == cv::dnn::DNN_TARGET_CUDA_FP16)) {
+            cudaSupported = true;
+            break;
+          }
+        }
+      } catch (...) {
+        cudaSupported = false;
+      }
+
+      if (cudaSupported) {
+        std::cout << "Using CUDA backend" << std::endl;
+        network_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+      } else {
+        std::cerr << "Warning: CUDA requested but not supported by OpenCV DNN build or hardware. Falling back to CPU backend." << std::endl;
+        network_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+      }
     } else {
       std::cout << "Using CPU backend" << std::endl;
       network_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);

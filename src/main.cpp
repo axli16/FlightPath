@@ -272,8 +272,18 @@ int main(int argc, char *argv[]) {
 
   // Initialize output writer if requested
   if (config.video.saveOutput) {
-    cv::Size frameSize(videoProcessor.getFrameWidth(),
-                       videoProcessor.getFrameHeight());
+    int finalWidth = videoProcessor.getFrameWidth();
+    int finalHeight = videoProcessor.getFrameHeight();
+
+    if (config.video.autoCrop) {
+      finalWidth = std::min(finalWidth, config.video.maxCropWidth);
+      finalHeight = std::min(finalHeight, config.video.maxCropHeight);
+    } else if (config.video.autoScale) {
+      finalWidth = config.video.targetWidth;
+      finalHeight = config.video.targetHeight;
+    }
+
+    cv::Size frameSize(finalWidth, finalHeight);
     if (!videoProcessor.initWriter(config.video.outputPath,
                                    videoProcessor.getFPS(), frameSize)) {
       std::cerr << "Warning: Could not initialize output writer" << std::endl;
