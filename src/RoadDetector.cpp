@@ -50,9 +50,9 @@ bool RoadDetector::loadModel(const RoadConfig &config) {
       }
 
       if (cudaSupported) {
-        std::cout << "  Using CUDA backend for road detection" << std::endl;
+        std::cout << "  Using CUDA backend for road detection (FP16)" << std::endl;
         network_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
       } else {
         std::cerr << "  Warning: CUDA requested but not supported by OpenCV DNN build or hardware. Falling back to CPU backend." << std::endl;
         network_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);

@@ -355,10 +355,10 @@ Path PathPlanner::buildPerspectivePath(cv::Point target, const cv::Rect &roi,
                                        const PathConfig &config) {
   Path path;
 
-  // Start the path at ~55% frame height (above the motorcycle dashboard)
-  // instead of the very bottom of the ROI — this makes the path look like
-  // it's projected onto the road surface ahead, not on the dashboard.
-  int pathStartY = static_cast<int>(frameSize.height * 0.55f);
+  // Start the path at ~75% frame height (well below the horizon) so it
+  // stretches far up the frame toward the vanishing point, making the
+  // suggested route clearly visible at distance.
+  int pathStartY = static_cast<int>(frameSize.height * 0.75f);
   path.start = cv::Point(roi.x + roi.width / 2, pathStartY);
   path.end = target;
 
@@ -464,9 +464,11 @@ PathPlanner::findPaths(const std::vector<Detection> &detections,
   // offset.
   Path best = paths[0];
   float horizonY = config.horizonRatio * frameSize.height;
+  // Target right at (or just above) the horizon so the path reaches far
+  // into the distance rather than stopping partway up the frame.
   float forwardTargetY =
       std::max(static_cast<float>(roi.y),
-               horizonY + (frameSize.height - horizonY) * 0.20f);
+               horizonY + (frameSize.height - horizonY) * 0.02f);
   best.end.y = static_cast<int>(forwardTargetY);
   Path result = buildPerspectivePath(best.end, roi, frameSize, config);
   result.width = best.width;
@@ -639,9 +641,11 @@ std::vector<Path> PathPlanner::findPaths(
   // offset.
   Path best = paths[0];
   float horizonY2 = config.horizonRatio * frameSize.height;
+  // Target right at (or just above) the horizon so the path reaches far
+  // into the distance rather than stopping partway up the frame.
   float forwardTargetY2 =
       std::max(static_cast<float>(roi.y),
-               horizonY2 + (frameSize.height - horizonY2) * 0.20f);
+               horizonY2 + (frameSize.height - horizonY2) * 0.02f);
   best.end.y = static_cast<int>(forwardTargetY2);
   Path result = buildPerspectivePath(best.end, roi, frameSize, config);
   result.width = best.width;

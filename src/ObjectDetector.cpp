@@ -62,9 +62,9 @@ bool ObjectDetector::loadModel(const ModelConfig &config) {
       }
 
       if (cudaSupported) {
-        std::cout << "Using CUDA backend" << std::endl;
+        std::cout << "Using CUDA backend (FP16)" << std::endl;
         network_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+        network_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
       } else {
         std::cerr << "Warning: CUDA requested but not supported by OpenCV DNN build or hardware. Falling back to CPU backend." << std::endl;
         network_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
@@ -220,6 +220,14 @@ ObjectDetector::postProcess(const std::vector<cv::Mat> &outputs,
           // Adjust coordinates to full frame by adding ROI offset
           left += roi.x;
           top += roi.y;
+
+          // Filter out detections that cover more than 80% of the frame area.
+          // These are almost certainly the rider's own motorcycle body/dashboard
+          // captured by the dashcam, not a real obstacle ahead.
+          int frameArea = frame.cols * frame.rows;
+          if (frameArea > 0 && (width * height) > static_cast<int>(0.8f * frameArea)) {
+            continue;
+          }
 
           classIds.push_back(classId);
           confidences.push_back(static_cast<float>(confidence));

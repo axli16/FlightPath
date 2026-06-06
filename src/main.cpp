@@ -101,6 +101,8 @@ bool parseArguments(int argc, char *argv[], AppConfig &config) {
       config.road.enabled = false;
     } else if (arg == "--no-display") {
       config.video.displayWindow = false;
+    } else if (arg == "--frames" && i + 1 < argc) {
+      config.video.maxFrames = std::stoi(argv[++i]);
     } else if (arg == "--help" || arg == "-h") {
       return false;
     }
@@ -126,6 +128,11 @@ void processFrame(AppConfig &config,
 
   while (true) {
     frameQueue.pop(localFrame);
+
+    if (localFrame.frameNumber == -1) {
+      postProcessQueue.push(FrameData{cv::Mat(), {}, {}, {}, {}, {}, -1});
+      break;
+    }
 
     std::cout << "Processing frame " << localFrame.frameNumber << " (DETECTING)"
               << std::endl;
@@ -258,6 +265,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (config.video.maxFrames > 0) {
+    totalFrames = std::min(totalFrames, config.video.maxFrames);
+    std::cout << "Limiting processing to first " << totalFrames << " frames" << std::endl;
+  }
+
   // Load YOLO model
   std::cout << "\n[2/3] Loading YOLO model..." << std::endl;
   if (!objectDetector1.loadModel(config.model)) {
@@ -353,6 +365,7 @@ int main(int argc, char *argv[]) {
       }
     }
     std::cout << "Finished reading all frames: " << numFrames << std::endl;
+    frameQueue.push(preProcessFrameData{cv::Mat(), -1});
   });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(15));
@@ -398,6 +411,10 @@ int main(int argc, char *argv[]) {
       // 100% CPU starvation on the draw thread.
       postProcessQueue.pop(frameData);
 
+      if (frameData.frameNumber == -1) {
+        break;
+      }
+
       // Optimization: Use move semantics to avoid deep copies of FrameData
       // (which contains large vectors like std::vector<Detection>).
       buffer[frameData.frameNumber] = std::move(frameData);
@@ -440,25 +457,14 @@ int main(int argc, char *argv[]) {
   });
   readFrameThread.join();
   detectorThread1.join();
-  // detectorThread2.join();
-  //  detectorThread3.join();
   drawThread.join();
-  while (true) {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-  }
 
-  std::cout << "Time taken" << std::endl;
   // Cleanup
   std::cout << "\n\nProcessing complete!" << std::endl;
-  std::cout << "Total frames processed: " << frameCount << std::endl;
+  std::cout << "Total frames processed: " << totalFrames << std::endl;
 
   if (config.video.saveOutput) {
     std::cout << "Output saved to: " << config.video.outputPath << std::endl;
-  }
-
-  if (savedFrameCount > 0) {
-    std::cout << "Saved " << savedFrameCount << " individual frames"
-              << std::endl;
   }
 
   videoProcessor.release();

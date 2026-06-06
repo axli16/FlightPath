@@ -223,6 +223,7 @@ struct VideoConfig {
   bool autoScale = true;
   int targetWidth = 1920;
   int targetHeight = 1080;
+  int maxFrames = -1; // Limit processing to first N frames (-1 = no limit)
 };
 
 // Model Configuration

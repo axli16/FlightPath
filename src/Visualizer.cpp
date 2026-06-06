@@ -131,7 +131,7 @@ void Visualizer::drawHUDPath(cv::Mat &frame, const std::vector<Path> &paths,
   // --- Build perspective-tapered path polygon ---
   // Path should look like it's projected onto the road surface
   std::vector<cv::Point> leftEdge, rightEdge;
-  float baseHalfWidth = frame.cols * 0.07f; // Wider at the near end
+  float baseHalfWidth = frame.cols * 0.09f; // Wider at the near end
   float minHalfWidth = 2.0f;
 
   // Reference: the path starts at ~55% frame height, not the bottom
@@ -219,8 +219,8 @@ void Visualizer::drawHUDPath(cv::Mat &frame, const std::vector<Path> &paths,
       dx /= len;
       dy /= len;
 
-      float arrowLen = 14.0f;
-      float arrowSpread = 8.0f;
+      float arrowLen = 30.0f;
+      float arrowSpread = 18.0f;
       float px = -dy;
       float py = dx;
 
