@@ -4,7 +4,8 @@ A C++ application that processes dashcam footage to detect objects and identify 
 
 ## Demo
 
-<video src="FlightPath_demo.mov" width="100%" controls></video>
+[![FlightPath Demo Video](Flightpath_thumbnail.png)](https://youtu.be/6n6Sjig46D0)
+
 
 ## Features
 
