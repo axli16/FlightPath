@@ -2,6 +2,10 @@
 
 A C++ application that processes dashcam footage to detect objects and identify navigable paths, similar to autonomous driving systems used by Tesla and other self-driving car companies.
 
+## Demo
+
+<video src="FlightPath_demo.mov" width="100%" controls></video>
+
 ## Features
 
 - **Real-time Object Detection**: Uses YOLOv4 to detect vehicles, pedestrians, and obstacles
